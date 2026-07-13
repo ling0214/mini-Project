@@ -37,7 +37,7 @@ MCP_TARGET_DIR=/path/to/some/repo MCP_ISSUES_PATH=/path/to/issues.json \
 | Tool | Input | Notes |
 |---|---|---|
 | `get_endpoint_info` | `name: str` | Returns `{"found": false}` if the name isn't in the graph — callers must treat that as missing coverage, not silently move on. |
-| `search_issues` | `query: str` | Keyword match against issue title + body. |
+| `search_issues` | `query: str` | Whole-word keyword match against issue title + body, with a stopword list so common words in a question ("what", "does", "change"...) can't produce a false match. |
 
 ## Known limitations (MVP, called out on purpose)
 

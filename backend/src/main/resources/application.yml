@@ -1,0 +1,15 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: mini-project-backend
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+
+mcp:
+  # Relative to the backend module's working directory (default when running
+  # `mvn spring-boot:run` from backend/). Override with an absolute path if
+  # you run the jar from elsewhere.
+  python-executable: ../mcp-server/.venv/Scripts/python.exe
+  server-args: -m,mcp_server.server

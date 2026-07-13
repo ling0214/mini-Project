@@ -8,8 +8,17 @@ and non-Python languages are out of scope until the demo repo is picked.
 
 import ast
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
+
+_WORD = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*")
+_STOPWORDS = {
+    "what", "does", "do", "did", "the", "a", "an", "is", "are", "was", "were",
+    "if", "we", "change", "changes", "changing", "break", "breaks", "broken",
+    "and", "or", "for", "with", "this", "that", "from", "into", "on", "to",
+    "of", "in", "not", "no", "all", "any",
+}
 
 
 @dataclass
@@ -85,11 +94,17 @@ class ProjectGraph:
         }
 
     def search_issues(self, query: str) -> list[dict]:
-        query_lower = query.lower()
-        terms = [t for t in query_lower.split() if t]
+        terms = {
+            w.lower() for w in _WORD.findall(query)
+            if w.lower() not in _STOPWORDS and len(w) >= 3
+        }
+        if not terms:
+            return []
         matches = []
         for issue in self.issues:
-            haystack = f"{issue.get('title', '')} {issue.get('body', '')}".lower()
-            if any(term in haystack for term in terms):
+            haystack_words = {
+                w.lower() for w in _WORD.findall(f"{issue.get('title', '')} {issue.get('body', '')}")
+            }
+            if terms & haystack_words:
                 matches.append(issue)
         return matches

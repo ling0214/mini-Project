@@ -35,13 +35,13 @@ Full design rationale (why graph-based retrieval over plain RAG, why skills are 
 
 ## Status
 
-Early scaffold — see [docs/architecture.md](docs/architecture.md) for the full design and the phased build plan.
+Week 1 slice working end to end and verified live: `mcp-server` parses a sample project into a real call graph and exposes `get_endpoint_info` / `search_issues` as MCP tools; `backend` connects to it as a real MCP client, deterministically grounds `code-qa` answers in those tool results, and returns them as `artifact.v1` envelopes with a `reviewed: false` gate. A static UI mockup of this flow is at [frontend/prototype/code-qa.html](frontend/prototype/code-qa.html). See [docs/architecture.md](docs/architecture.md) for the full design and what's still pending (Week 2–4).
 
 ## Roles supported
 
 | Role | Skills available today |
 |---|---|
-| Project Analyst | `impact-analysis`, `code-qa`, `weekly-report` |
-| Tester | `test-case-gen`, `code-qa` |
+| Project Analyst | `code-qa` (implemented), `impact-analysis`, `weekly-report` (spec only) |
+| Tester | `code-qa` (implemented), `test-case-gen` (spec only) |
 
 New roles are added by defining a profile (persona + allowed skills) under [profiles/](profiles/) — the graph, MCP tools, and skills are shared, not duplicated.
