@@ -1,0 +1,17 @@
+[project]
+name = "mcp-server"
+version = "0.1.0"
+description = "Project-graph MCP server (mini-Project)"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=1.28.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=9.0"]
+
+[tool.setuptools]
+packages = ["mcp_server"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

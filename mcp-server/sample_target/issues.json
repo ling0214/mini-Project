@@ -1,0 +1,23 @@
+[
+  {
+    "id": 101,
+    "title": "Checkout fails when cart is empty",
+    "state": "closed",
+    "body": "calculate_total throws on empty cart because get_cart_items returns an empty list and sum() over price keys fails.",
+    "files": ["app.py"]
+  },
+  {
+    "id": 108,
+    "title": "Payment gateway timeout not retried",
+    "state": "open",
+    "body": "charge_card does not retry on gateway timeout, checkout_endpoint surfaces a raw 500 to the customer.",
+    "files": ["payments.py"]
+  },
+  {
+    "id": 112,
+    "title": "Receipt email sent to wrong address after profile update",
+    "state": "open",
+    "body": "send_receipt uses a stale cached email via _lookup_email instead of the latest profile email.",
+    "files": ["notifications.py"]
+  }
+]
