@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8080";
+const ANALYST_PROFILE = "software-analyst";
 
 const ROLE_LABELS = {
   "project-analyst": "Project Analyst",
@@ -30,11 +31,15 @@ const ROLE_CARDS = [
 
 const SKILLS_BY_ROLE = {
   "project-analyst": ["code-qa", "impact-analysis"],
-  "business-analyst": ["code-qa", "impact-analysis"],
+  "business-analyst": ["requirement-analysis", "impact-analysis", "code-qa"],
   tester: ["code-qa", "test-case-gen"],
 };
 
 const SKILL_META = {
+  "requirement-analysis": {
+    title: "Requirement Analysis",
+    desc: "Find ambiguity and missing information",
+  },
   "code-qa": {
     title: "Code Q&A",
     desc: "Ask a grounded codebase question",
@@ -47,9 +52,18 @@ const SKILL_META = {
     title: "Test Case Gen",
     desc: "Generate a regression test plan",
   },
+  "handoff-summary": {
+    title: "Handoff Summary",
+    desc: "Compile analyst findings for handoff",
+  },
 };
 
 const CHIPS = {
+  "requirement-analysis": [
+    "Customer should be able to change payment_method after checkout is submitted.",
+    "Maybe let users update card details later.",
+    "The customer must be able to apply promo_code before payment confirmation.",
+  ],
   "code-qa": [
     "What does checkout_endpoint depend on, and are there known issues with it?",
     "Has payments code broken before?",
@@ -64,18 +78,37 @@ const CHIPS = {
 };
 
 function App() {
-  const [role, setRole] = useState(null);
-  const [step, setStep] = useState("role");
-  const [skill, setSkill] = useState("code-qa");
   const [backendStatus, setBackendStatus] = useState("checking");
-  const [artifact, setArtifact] = useState(null);
-  const [history, setHistory] = useState([]);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [handoffs, setHandoffs] = useState([]);
 
   useEffect(() => {
     checkBackend(setBackendStatus);
   }, []);
+
+  return (
+    <div className="app-shell">
+      <TopBar status={backendStatus} />
+      <AnalystWorkflow />
+      <footer className="app-footer">
+        API: <code>{API_BASE}</code> · Artifacts, review gate, Jira issue creation, and Bitbucket PR comments are backed by the Spring Boot service.
+      </footer>
+    </div>
+  );
+}
+
+/**
+ * Pre-existing role-first / free-form skill picker (Section 4.1). Kept as a
+ * fallback behind the mode switch — AnalystWorkflow below is now the primary
+ * landing experience (docs/proposal.md "Software Analyst Workflow Assistant"
+ * framing: one continuous pipeline, not role selection first).
+ */
+function LegacyWorkbench() {
+  const [role, setRole] = useState(null);
+  const [step, setStep] = useState("role");
+  const [skill, setSkill] = useState("code-qa");
+  const [artifact, setArtifact] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [handoffs, setHandoffs] = useState([]);
 
   const allowedSkills = useMemo(() => (role ? SKILLS_BY_ROLE[role] || [] : []), [role]);
 
@@ -130,11 +163,14 @@ function App() {
   }
 
   return (
-    <div className="app-shell">
-      <TopBar status={backendStatus} onHistory={loadHistory} />
+    <>
       <WorkflowRail step={step} />
-
       <main className="workspace">
+        <div className="legacy-toolbar">
+          <button className="btn ghost compact" type="button" onClick={loadHistory}>
+            History
+          </button>
+        </div>
         {step === "role" && <RoleScreen onSelect={selectRole} />}
         {step === "analyze" && (
           <AnalyzeScreen
@@ -180,26 +216,19 @@ function App() {
           />
         )}
       </main>
-
-      <footer className="app-footer">
-        API: <code>{API_BASE}</code> · Artifacts, review gate, Jira issue creation, and Bitbucket PR comments are backed by the Spring Boot service.
-      </footer>
-    </div>
+    </>
   );
 }
 
-function TopBar({ status, onHistory }) {
+function TopBar({ status }) {
   return (
     <header className="topbar">
       <div className="brand-mark">H</div>
       <div>
-        <div className="brand-name">Hermes Analyst Workbench</div>
-        <div className="brand-subtitle">AI software analyst delivery console</div>
+        <div className="brand-name">Analyst Workbench</div>
+        <div className="brand-subtitle">Software Analyst workflow assistant</div>
       </div>
       <div className="topbar-spacer" />
-      <button className="btn ghost compact" type="button" onClick={onHistory}>
-        History
-      </button>
       <span className={`connection ${status}`}>
         <span />
         {status === "up" ? "Backend up" : status === "down" ? "Backend down" : "Checking backend"}
@@ -231,6 +260,464 @@ function WorkflowRail({ step }) {
   );
 }
 
+/**
+ * The Software Analyst Workflow Assistant: one continuous requirement -&gt;
+ * impact -&gt; test -&gt; report pipeline instead of a role picker. A single
+ * fixed profile (business-analyst, already permitted for requirement-analysis
+ * and impact-analysis) drives every call — the point of this mode is the
+ * analyst's workflow, not which role is "allowed" to click what.
+ */
+const WORKFLOW_STEPS = [
+  ["requirement", "Requirement Intake"],
+  ["impact", "Impact Analysis"],
+  ["test", "Test Scenarios"],
+  ["report", "Handoff Summary"],
+];
+
+function AnalystWorkflow() {
+  const [phase, setPhase] = useState("requirement");
+  const [description, setDescription] = useState("");
+  const [reqArtifact, setReqArtifact] = useState(null);
+  const [impactArtifact, setImpactArtifact] = useState(null);
+  const [impactLoading, setImpactLoading] = useState(false);
+  const [impactError, setImpactError] = useState("");
+  const [testArtifacts, setTestArtifacts] = useState([]);
+  const [summaryArtifact, setSummaryArtifact] = useState(null);
+  const startedImpactRef = useRef(false);
+
+  const reqStatus = reqArtifact ? getRequirementStatus(reqArtifact) : null;
+
+  function reset() {
+    setPhase("requirement");
+    setDescription("");
+    setReqArtifact(null);
+    setImpactArtifact(null);
+    setImpactError("");
+    setTestArtifacts([]);
+    setSummaryArtifact(null);
+    startedImpactRef.current = false;
+  }
+
+  async function runImpactAnalysis() {
+    if (!reqArtifact) {
+      setImpactError("Requirement analysis artifact is required before impact analysis.");
+      return;
+    }
+    setImpactLoading(true);
+    setImpactError("");
+    try {
+      const next = await api(`/api/artifacts/${reqArtifact.task_id}/handoff/impact-analysis`, {
+        method: "POST",
+        body: { profile: ANALYST_PROFILE },
+      });
+      setImpactArtifact(next);
+    } catch (err) {
+      setImpactError(err.message);
+    } finally {
+      setImpactLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (phase === "impact" && !startedImpactRef.current) {
+      startedImpactRef.current = true;
+      runImpactAnalysis();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+
+  async function reviewRequirement() {
+    const next = await api(`/api/artifacts/${reqArtifact.task_id}/review`, { method: "PATCH" });
+    setReqArtifact({ ...next, analysis_status: reqStatus });
+    setPhase("impact");
+  }
+
+  async function reviewImpact() {
+    const next = await api(`/api/artifacts/${impactArtifact.task_id}/review`, { method: "PATCH" });
+    setImpactArtifact(next);
+  }
+
+  async function generateTests(moduleName) {
+    const next = await api(`/api/artifacts/${impactArtifact.task_id}/handoff/test-case-gen`, {
+      method: "POST",
+      body: { profile: ANALYST_PROFILE, target: moduleName },
+    });
+    setTestArtifacts((prev) => [...prev.filter((item) => item.result?.target !== moduleName), next]);
+  }
+
+  async function generateSummary() {
+    const next = await api(`/api/artifacts/${impactArtifact.task_id}/handoff/handoff-summary`, {
+      method: "POST",
+      body: {
+        profile: ANALYST_PROFILE,
+        requirement_task_id: reqArtifact.task_id,
+        test_task_ids: testArtifacts.map((item) => item.task_id),
+      },
+    });
+    setSummaryArtifact(next);
+  }
+
+  async function reviewSummary() {
+    const next = await api(`/api/artifacts/${summaryArtifact.task_id}/review`, { method: "PATCH" });
+    setSummaryArtifact(next);
+  }
+
+  return (
+    <>
+      <AnalystWorkflowRail
+        phase={phase}
+        reqStatus={reqStatus}
+        impactReviewed={Boolean(impactArtifact?.reviewed)}
+        testCount={testArtifacts.length}
+        onReset={reset}
+      />
+      <main className="workspace">
+        {phase === "requirement" && (
+          <RequirementPhase
+            description={description}
+            onDescriptionChange={setDescription}
+            reqArtifact={reqArtifact}
+            reqStatus={reqStatus}
+            onArtifact={setReqArtifact}
+            onReview={reviewRequirement}
+          />
+        )}
+        {phase === "impact" && (
+          <ImpactPhase
+            loading={impactLoading}
+            error={impactError}
+            artifact={impactArtifact}
+            onRetry={runImpactAnalysis}
+            onReview={reviewImpact}
+            onBack={() => setPhase("requirement")}
+            onNext={() => setPhase("test")}
+          />
+        )}
+        {phase === "test" && (
+          <TestPhase
+            impactArtifact={impactArtifact}
+            testArtifacts={testArtifacts}
+            onGenerate={generateTests}
+            onBack={() => setPhase("impact")}
+            onNext={() => setPhase("report")}
+          />
+        )}
+        {phase === "report" && (
+          <ReportPhase
+            description={description}
+            reqArtifact={reqArtifact}
+            impactArtifact={impactArtifact}
+            testArtifacts={testArtifacts}
+            summaryArtifact={summaryArtifact}
+            onGenerateSummary={generateSummary}
+            onReviewSummary={reviewSummary}
+            onRestart={reset}
+          />
+        )}
+      </main>
+    </>
+  );
+}
+
+function AnalystWorkflowRail({ phase, reqStatus, impactReviewed, testCount, onReset }) {
+  const order = WORKFLOW_STEPS.map(([id]) => id);
+  const currentIndex = order.indexOf(phase);
+  const subtitle = {
+    requirement: reqStatus ? formatStatus(reqStatus) : "Not started",
+    impact: impactReviewed ? "Reviewed" : currentIndex >= order.indexOf("impact") ? "In review" : "Pending",
+    test: testCount > 0 ? `${testCount} scenario set${testCount === 1 ? "" : "s"}` : "Pending",
+    report: phase === "report" ? "Viewing" : "Pending",
+  };
+  return (
+    <aside className="workflow-rail">
+      <div className="rail-label">Analyst Workflow</div>
+      {WORKFLOW_STEPS.map(([id, label], index) => {
+        const state = index < currentIndex ? "complete" : index === currentIndex ? "active" : "";
+        return (
+          <div key={id} className={`workflow-step ${state}`}>
+            <span>{index < currentIndex ? "✓" : index + 1}</span>
+            <div className="workflow-step-text">
+              {label}
+              <small>{subtitle[id]}</small>
+            </div>
+          </div>
+        );
+      })}
+      <div className="rail-divider" />
+      <div className="rail-note">
+        One continuous requirement → impact → test → report pipeline. Clarification and review gates run inline before you can move to the next step.
+      </div>
+      <button className="btn ghost compact rail-reset" type="button" onClick={onReset}>
+        Start new analysis
+      </button>
+    </aside>
+  );
+}
+
+function RequirementPhase({ description, onDescriptionChange, reqArtifact, reqStatus, onArtifact, onReview }) {
+  const reviewed = Boolean(reqArtifact?.reviewed);
+  const reviewBlocked = reqStatus === "NEEDS_CLARIFICATION";
+  return (
+    <section className="screen">
+      <HeaderBlock
+        eyebrow="Step 1 · Requirement Intake"
+        title="Describe the requirement or change request"
+        subtitle="Paste a user story, ticket description, or change request. The workflow surfaces missing information before anything moves forward."
+      />
+      {!reqArtifact && (
+        <SkillForm
+          label="Requirement or change request"
+          value={description}
+          onChange={onDescriptionChange}
+          chips={CHIPS["requirement-analysis"]}
+          placeholder="Describe the business change the analyst needs to assess"
+          actionLabel="Analyze Requirement"
+          onSubmit={async () => {
+            const response = await api("/api/skills/requirement-analysis", {
+              method: "POST",
+              body: { profile: ANALYST_PROFILE, description },
+            });
+            return normalizeRequirementResponse(response);
+          }}
+          onArtifact={onArtifact}
+        />
+      )}
+      {reqArtifact && (
+        <>
+          <RequirementAnalysisReport artifact={reqArtifact} result={reqArtifact.result || {}} onArtifact={onArtifact} />
+          <div className="action-row">
+            <span className={`status-pill ${reviewed ? "reviewed" : "unreviewed"}`}>{reviewed ? "Reviewed" : "Unreviewed"}</span>
+            <button className="btn primary" type="button" disabled={reviewed || reviewBlocked} onClick={onReview}>
+              {reviewed ? "Reviewed - continuing" : "Mark as reviewed and continue"}
+            </button>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function ImpactPhase({ loading, error, artifact, onRetry, onReview, onBack, onNext }) {
+  const result = artifact?.result || {};
+  const reviewed = Boolean(artifact?.reviewed);
+  return (
+    <section className="screen">
+      <HeaderBlock
+        eyebrow="Step 2 · Impact Analysis"
+        title="Scope the blast radius"
+        subtitle="Runs automatically against the reviewed requirement text, grounded in the project graph via MCP."
+      />
+      {loading && <p className="muted">Running impact analysis…</p>}
+      {error && (
+        <>
+          <ErrorBox message={error} />
+          <div className="action-row">
+            <button className="btn ghost" type="button" onClick={onRetry}>
+              Retry
+            </button>
+          </div>
+        </>
+      )}
+      {artifact && !loading && (
+        <>
+          <div className="stat-grid">
+            <Stat label="Risk level" value={<Tag kind="risk" value={result.risk_level} />} />
+            <Stat
+              label="Rough effort"
+              value={`${result.rough_effort?.estimate || "?"}${result.rough_effort?.basis ? ` - ${result.rough_effort.basis}` : ""}`}
+            />
+            <Stat label="Confidence" value={<Tag kind="confidence" value={result.confidence} />} />
+          </div>
+          <EvidenceList title="Affected modules" items={result.affected_modules || []} sourceKey="path" claimKey="reason" />
+          <EvidenceList title="Related historical issues" items={result.risk_notes || []} sourceKey="evidence" claimKey="note" />
+          {(result.missing_evidence || []).length > 0 && <SimpleList title="Missing evidence" items={result.missing_evidence} tone="danger" />}
+          <div className="action-row">
+            <span className={`status-pill ${reviewed ? "reviewed" : "unreviewed"}`}>{reviewed ? "Reviewed" : "Unreviewed"}</span>
+            <button className="btn primary" type="button" disabled={reviewed} onClick={onReview}>
+              {reviewed ? "Reviewed" : "Mark as reviewed"}
+            </button>
+            <button className="btn ghost" type="button" onClick={onBack}>
+              Back to requirement
+            </button>
+            <button className="btn ghost push" type="button" disabled={!reviewed} onClick={onNext}>
+              Continue to test scenarios
+            </button>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function TestPhase({ impactArtifact, testArtifacts, onGenerate, onBack, onNext }) {
+  const modules = impactArtifact?.result?.affected_modules || [];
+  const [loadingTarget, setLoadingTarget] = useState("");
+  return (
+    <section className="screen">
+      <HeaderBlock
+        eyebrow="Step 3 · Test Scenarios"
+        title="Generate regression coverage for the affected modules"
+        subtitle="Pick any module from the reviewed impact analysis to generate a grounded test plan."
+      />
+      {modules.length === 0 && <SimpleList title="Affected modules" items={["No affected modules resolved in the project graph."]} />}
+      {modules.length > 0 && (
+        <div className="skill-grid">
+          {modules.map((item) => {
+            const done = testArtifacts.some((entry) => entry.result?.target === item.name);
+            return (
+              <button
+                key={item.name}
+                type="button"
+                className={`skill-tab ${done ? "active" : ""}`}
+                disabled={loadingTarget === item.name}
+                onClick={async () => {
+                  setLoadingTarget(item.name);
+                  try {
+                    await onGenerate(item.name);
+                  } finally {
+                    setLoadingTarget("");
+                  }
+                }}
+              >
+                <strong>{item.name}</strong>
+                <span>{loadingTarget === item.name ? "Generating…" : done ? "Generated - click to regenerate" : item.reason}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {testArtifacts.map((item) => (
+        <section key={item.task_id} className="list-section">
+          <h3>Test plan · {item.result?.target}</h3>
+          <TestGenReport result={item.result || {}} />
+        </section>
+      ))}
+      <div className="action-row">
+        <button className="btn ghost" type="button" onClick={onBack}>
+          Back to impact analysis
+        </button>
+        <button className="btn primary push" type="button" disabled={testArtifacts.length === 0} onClick={onNext}>
+          Continue to analyst report
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function ReportPhase({ description, reqArtifact, impactArtifact, testArtifacts, summaryArtifact, onGenerateSummary, onReviewSummary, onRestart }) {
+  const reqResult = reqArtifact?.result || {};
+  const impactResult = impactArtifact?.result || {};
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  return (
+    <section className="screen">
+      <HeaderBlock
+        eyebrow="Step 4 - Handoff Summary"
+        title="Compiled handoff summary"
+        subtitle="Generate a reviewable artifact that can be shared with PM, developer, tester, or supervisor."
+      />
+      {!summaryArtifact && (
+        <>
+          <div className="answer-panel">{description}</div>
+          <div className="stat-grid">
+            <Stat
+              label="Requirement status"
+              value={<span className="tag reviewed">{reqArtifact ? formatStatus(getRequirementStatus(reqArtifact)) : "-"}</span>}
+            />
+            <Stat label="Risk level" value={<Tag kind="risk" value={impactResult.risk_level} />} />
+            <Stat label="Test plans generated" value={testArtifacts.length} />
+          </div>
+          <SimpleList title="Business rules" items={reqResult.business_rules || []} />
+          <SimpleList title="Assumptions" items={reqResult.assumptions || []} />
+          <EvidenceList title="Affected modules" items={impactResult.affected_modules || []} sourceKey="path" claimKey="reason" />
+          <SimpleList
+            title="Test scenarios prepared"
+            items={testArtifacts.map((item) => `${item.result?.target}: ${(item.result?.cases || []).length} case(s)`)}
+          />
+          {error && <ErrorBox message={error} />}
+          <div className="action-row">
+            <button
+              className="btn primary"
+              type="button"
+              disabled={loading}
+              onClick={async () => {
+                setError("");
+                setLoading(true);
+                try {
+                  await onGenerateSummary();
+                } catch (err) {
+                  setError(err.message);
+                } finally {
+                  setLoading(false);
+                }
+              }}
+            >
+              {loading ? "Generating..." : "Generate Handoff Summary"}
+            </button>
+            <button className="btn ghost" type="button" onClick={onRestart}>
+              Start new analysis
+            </button>
+          </div>
+        </>
+      )}
+      {summaryArtifact && (
+        <>
+          <div className="report-header">
+            <div>
+              <div className="eyebrow">Persisted artifact</div>
+              <h1>Handoff Summary</h1>
+              <p className="muted">Task ID: {summaryArtifact.task_id}</p>
+            </div>
+            <div className="review-actions">
+              <span className={`status-pill ${summaryArtifact.reviewed ? "reviewed" : "unreviewed"}`}>
+                {summaryArtifact.reviewed ? "Reviewed" : "Unreviewed"}
+              </span>
+              <button className="btn primary" type="button" disabled={summaryArtifact.reviewed} onClick={onReviewSummary}>
+                {summaryArtifact.reviewed ? "Reviewed" : "Mark summary as reviewed"}
+              </button>
+            </div>
+          </div>
+          <HandoffSummaryReport result={summaryArtifact.result || {}} />
+          <details className="raw">
+            <summary>View raw handoff-summary artifact</summary>
+            <pre>{JSON.stringify(summaryArtifact, null, 2)}</pre>
+          </details>
+          <div className="action-row">
+            <button className="btn ghost" type="button" onClick={onRestart}>
+              Start new analysis
+            </button>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function HandoffSummaryReport({ result }) {
+  return (
+    <>
+      <section className="answer-panel">{result.requirement_summary || "(no requirement summary)"}</section>
+      <div className="stat-grid">
+        <Stat label="Risk level" value={<Tag kind="risk" value={result.risk_level} />} />
+        <Stat label="Effort estimate" value={result.effort_estimate || "unknown"} />
+        <Stat label="Test plans" value={(result.test_plans || []).length} />
+      </div>
+      <SimpleList title="Business rules" items={result.business_rules || []} />
+      <SimpleList title="Clarifications" items={result.clarifications || []} />
+      <SimpleList title="Assumptions" items={result.assumptions || []} />
+      <EvidenceList title="Impact areas" items={result.impact_areas || []} sourceKey="path" claimKey="reason" />
+      <EvidenceList title="Risk notes" items={result.risk_notes || []} sourceKey="evidence" claimKey="note" />
+      <SimpleList
+        title="Testing scope"
+        items={(result.test_plans || []).map(
+          (item) => `${item.target}: ${item.case_count} case(s); regression checks: ${(item.regression_checklist || []).length}`
+        )}
+      />
+      <SimpleList title="Open questions" items={result.open_questions || []} tone={(result.open_questions || []).length > 0 ? "danger" : undefined} />
+      <EvidenceList title="Evidence" items={result.evidence || []} sourceKey="source" claimKey="claim" />
+    </>
+  );
+}
 function RoleScreen({ onSelect }) {
   return (
     <section className="screen">
@@ -279,10 +766,33 @@ function AnalyzeScreen({ role, skill, allowedSkills, onSkill, onArtifact, onChan
           </button>
         ))}
       </div>
+      {skill === "requirement-analysis" && <RequirementAnalysisForm role={role} onArtifact={onArtifact} />}
       {skill === "code-qa" && <CodeQaForm role={role} onArtifact={onArtifact} />}
       {skill === "impact-analysis" && <ImpactForm role={role} onArtifact={onArtifact} />}
       {skill === "test-case-gen" && <TestGenForm role={role} onArtifact={onArtifact} />}
     </section>
+  );
+}
+
+function RequirementAnalysisForm({ role, onArtifact }) {
+  const [description, setDescription] = useState("");
+  return (
+    <SkillForm
+      label="Requirement or change request"
+      value={description}
+      onChange={setDescription}
+      chips={CHIPS["requirement-analysis"]}
+      placeholder="Describe the business change the analyst needs to assess"
+      actionLabel="Analyze Requirement"
+      onSubmit={async () => {
+        const response = await api("/api/skills/requirement-analysis", {
+          method: "POST",
+          body: { profile: role, description },
+        });
+        return normalizeRequirementResponse(response);
+      }}
+      onArtifact={onArtifact}
+    />
   );
 }
 
@@ -428,6 +938,8 @@ function SkillForm({ label, value, onChange, chips, placeholder, actionLabel, on
 
 function ReportScreen({ artifact, role, handoffs, onReviewed, onRunAnother, onChangeRole, onArtifact, onReloadHandoffs }) {
   const reviewed = Boolean(artifact.reviewed);
+  const requirementStatus = artifact.skill === "requirement-analysis" ? getRequirementStatus(artifact) : null;
+  const reviewBlocked = requirementStatus === "NEEDS_CLARIFICATION";
   return (
     <section className="screen">
       <div className="role-pill">
@@ -443,13 +955,17 @@ function ReportScreen({ artifact, role, handoffs, onReviewed, onRunAnother, onCh
           <p className="muted">Task ID: {artifact.task_id}</p>
         </div>
         <div className="review-actions">
+          {requirementStatus && <span className={`status-pill ${statusClass(requirementStatus)}`}>{formatStatus(requirementStatus)}</span>}
           <span className={`status-pill ${reviewed ? "reviewed" : "unreviewed"}`}>{reviewed ? "Reviewed" : "Unreviewed"}</span>
-          <button className="btn primary" type="button" disabled={reviewed} onClick={onReviewed}>
+          <button className="btn primary" type="button" disabled={reviewed || reviewBlocked} onClick={onReviewed}>
             {reviewed ? "Reviewed" : "Mark as reviewed"}
           </button>
         </div>
       </div>
 
+      {artifact.skill === "requirement-analysis" && (
+        <RequirementAnalysisReport artifact={artifact} result={artifact.result || {}} onArtifact={onArtifact} />
+      )}
       {artifact.skill === "code-qa" && <CodeQaReport result={artifact.result || {}} />}
       {artifact.skill === "impact-analysis" && (
         <ImpactReport
@@ -462,6 +978,7 @@ function ReportScreen({ artifact, role, handoffs, onReviewed, onRunAnother, onCh
       )}
       {artifact.skill === "test-case-gen" && <TestGenReport result={artifact.result || {}} />}
       {artifact.skill === "timeline-estimation" && <TimelineReport result={artifact.result || {}} />}
+      {artifact.skill === "handoff-summary" && <HandoffSummaryReport result={artifact.result || {}} />}
 
       <details className="raw">
         <summary>View raw artifact.v1 response</summary>
@@ -472,6 +989,84 @@ function ReportScreen({ artifact, role, handoffs, onReviewed, onRunAnother, onCh
           Run another analysis
         </button>
       </div>
+    </section>
+  );
+}
+
+function RequirementAnalysisReport({ artifact, result, onArtifact }) {
+  const status = getRequirementStatus(artifact);
+  const ambiguities = result.ambiguities || [];
+  return (
+    <>
+      <div className="stat-grid">
+        <Stat label="Workflow status" value={<span className={`tag ${statusClass(status)}`}>{formatStatus(status)}</span>} />
+        <Stat label="Confidence" value={<Tag kind="confidence" value={result.confidence} />} />
+        <Stat label="Potential areas" value={(result.potential_affected_areas || []).length} />
+      </div>
+      <SimpleList title="Business rules" items={result.business_rules || []} />
+      <SimpleList title="Missing information" items={result.missing_information || []} tone={status === "NEEDS_CLARIFICATION" ? "danger" : undefined} />
+      <SimpleList title="Assumptions" items={result.assumptions || []} />
+      <SimpleList title="Potential affected areas" items={result.potential_affected_areas || []} />
+      {ambiguities.length > 0 && (
+        <section className="list-section">
+          <h3>Ambiguities</h3>
+          <ul className="evidence-list">
+            {ambiguities.map((item, index) => (
+              <li key={index}>
+                <code>{item.evidence || "requirement text"}</code>
+                <span>{item.note}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      <EvidenceList title="Evidence" items={result.evidence || []} sourceKey="source" claimKey="claim" />
+      {status === "NEEDS_CLARIFICATION" && <ClarificationPanel artifact={artifact} onArtifact={onArtifact} />}
+    </>
+  );
+}
+
+function ClarificationPanel({ artifact, onArtifact }) {
+  const [additionalInfo, setAdditionalInfo] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const profile = (artifact.agent || "").replace(/-agent$/, "") || ANALYST_PROFILE;
+  return (
+    <section className="handoff-panel clarification-panel">
+      <h3>Clarification</h3>
+      <p className="muted">Add the analyst answer or confirmed business rule, then rerun requirement analysis as a linked artifact.</p>
+      <textarea
+        value={additionalInfo}
+        onChange={(event) => setAdditionalInfo(event.target.value)}
+        placeholder="Example: Payment method can only be changed before policy approval."
+      />
+      {error && <ErrorBox message={error} />}
+      <button
+        className="btn primary"
+        type="button"
+        disabled={loading}
+        onClick={async () => {
+          setError("");
+          if (!additionalInfo.trim()) {
+            setError("Clarification text is required.");
+            return;
+          }
+          setLoading(true);
+          try {
+            const response = await api(`/api/artifacts/${artifact.task_id}/clarify`, {
+              method: "POST",
+              body: { profile, additional_info: additionalInfo },
+            });
+            onArtifact(normalizeRequirementResponse(response));
+          } catch (err) {
+            setError(err.message);
+          } finally {
+            setLoading(false);
+          }
+        }}
+      >
+        {loading ? "Submitting..." : "Submit Clarification"}
+      </button>
     </section>
   );
 }
@@ -710,14 +1305,20 @@ function HistoryScreen({ items, onBack, onOpen }) {
       <ul className="history-list">
         {items.length === 0 && <li>No analyses run yet.</li>}
         {items.map((item) => (
-          <li key={item.task_id}>
-            <button type="button" onClick={() => onOpen(item.task_id)}>
+          <li key={item.task_id} className="history-row">
+            <button type="button" className="history-row-main" onClick={() => onOpen(item.task_id)}>
               <strong>{item.skill}</strong>
               <span>{item.input_preview || "(no input recorded)"}</span>
               <small>
                 {item.profile} · {formatDate(item.created_at)} · {item.reviewed ? "Reviewed" : "Unreviewed"}
               </small>
             </button>
+            {(item.jira_url || item.bitbucket_url) && (
+              <div className="history-row-links">
+                {item.jira_url && <ExternalLinkIcon href={item.jira_url} label="Open Jira issue" kind="jira" />}
+                {item.bitbucket_url && <ExternalLinkIcon href={item.bitbucket_url} label="Open Bitbucket PR comment" kind="bitbucket" />}
+              </div>
+            )}
           </li>
         ))}
       </ul>
@@ -725,6 +1326,22 @@ function HistoryScreen({ items, onBack, onOpen }) {
         Back
       </button>
     </section>
+  );
+}
+
+function ExternalLinkIcon({ href, label, kind }) {
+  return (
+    <a
+      className={`external-icon ${kind}`}
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      title={label}
+      aria-label={label}
+      onClick={(event) => event.stopPropagation()}
+    >
+      {kind === "jira" ? "J" : "B"}
+    </a>
   );
 }
 
@@ -795,6 +1412,29 @@ function Tag({ kind, value }) {
   return <span className={`tag ${tone}`}>{normalized}</span>;
 }
 
+function normalizeRequirementResponse(response) {
+  if (!response || !response.artifact) {
+    return response;
+  }
+  return { ...response.artifact, analysis_status: response.status };
+}
+
+function getRequirementStatus(artifact) {
+  if (artifact.analysis_status) {
+    return artifact.analysis_status;
+  }
+  const missing = artifact.result?.missing_information || [];
+  return missing.length === 0 ? "READY_FOR_REVIEW" : "NEEDS_CLARIFICATION";
+}
+
+function formatStatus(status) {
+  return String(status || "UNKNOWN").replaceAll("_", " ");
+}
+
+function statusClass(status) {
+  return status === "READY_FOR_REVIEW" ? "reviewed" : "unreviewed";
+}
+
 function ErrorBox({ message }) {
   return <div className="error-box">{message}</div>;
 }
@@ -831,3 +1471,4 @@ function formatDate(value) {
 }
 
 createRoot(document.getElementById("root")).render(<App />);
+

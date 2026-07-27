@@ -4,7 +4,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.Set;
 
-/** agents/tester-agent.md. */
+/** Legacy compatibility profile. The guided workflow uses SoftwareAnalystAgent. */
 @Component
 public class TesterAgent implements Agent {
 

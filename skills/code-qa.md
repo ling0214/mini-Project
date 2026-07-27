@@ -1,6 +1,6 @@
 # Skill: code-qa
 
-Used by: Project Analyst, Tester
+Used by: Software Analyst workflow
 
 ## Input
 

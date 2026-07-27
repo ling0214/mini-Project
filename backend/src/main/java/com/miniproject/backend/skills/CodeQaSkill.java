@@ -14,9 +14,8 @@ import java.util.regex.Pattern;
 /**
  * skills/code-qa.md, Week 1 shape: deterministic tool calls (this class
  * decides what to fetch), synthesis only is delegated to
- * {@link AnswerSynthesizer}. See docs/architecture.md - the coordinator/skill
- * layer stays deterministic until the Week 3 tool-use-loop upgrade
- * described in agents/project-analyst-agent.md.
+ * {@link AnswerSynthesizer}. See docs/architecture.md: the coordinator/skill
+ * layer stays deterministic until an LLM planner is deliberately added.
  */
 @Component
 public class CodeQaSkill {

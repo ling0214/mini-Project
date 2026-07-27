@@ -9,6 +9,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class ExternalHandoffService {
@@ -64,6 +66,16 @@ public class ExternalHandoffService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public Map<String, List<ExternalHandoffResult>> listCreatedForArtifacts(List<String> sourceTaskIds) {
+        if (sourceTaskIds.isEmpty()) {
+            return Map.of();
+        }
+        return handoffRepository.findBySourceTaskIdInAndStatusOrderByCreatedAtDesc(sourceTaskIds, "CREATED").stream()
+                .map(ExternalHandoffEntity::toResult)
+                .collect(Collectors.groupingBy(ExternalHandoffResult::sourceTaskId));
+    }
+
     private static String requireDestination(String destination) {
         if (destination == null || destination.isBlank()) {
             throw new IllegalArgumentException("destination is required: jira or bitbucket");
@@ -83,7 +95,7 @@ public class ExternalHandoffService {
 
     private String defaultDescription(Artifact<Object> source) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Reviewed artifact from Hermes Analyst Workbench\n\n");
+        sb.append("Reviewed artifact from Analyst Workbench\n\n");
         sb.append("Task ID: ").append(source.taskId()).append('\n');
         sb.append("Agent: ").append(source.agent()).append('\n');
         sb.append("Skill: ").append(source.skill()).append('\n');

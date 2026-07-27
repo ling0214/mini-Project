@@ -1,17 +1,24 @@
-"""MCP stdio client wrapper around `codebase-memory-mcp`.
+"""One-shot CLI wrapper around `codebase-memory-mcp`.
 
 This module makes `mcp-server` (an MCP *server* to the Spring Boot backend)
-also act as an MCP *client* of a second, separate MCP server —
-`codebase-memory-mcp`, a real LSP-based, multi-language, type-aware code
-graph already indexing this repo (project slug `C-Users-lingn-mini-Project`).
+also consume a second, separate tool — `codebase-memory-mcp`, a real
+LSP-based, multi-language, type-aware code graph already indexing this repo
+(project slug `C-Users-lingn-mini-Project`).
 
 Only `get_endpoint_info`, `trace_impact`, and `get_test_coverage` route
 through here — `search_issues` has no code-graph equivalent and stays on the
 local `issues.json` path in `graph.py`, unchanged.
 
-One `ClientSession` is spawned lazily and reused for the life of the process
-(spawning `codebase-memory-mcp.exe` per call would be needlessly slow and
-would lose any warm state the server keeps).
+Each call shells out to `codebase-memory-mcp.exe cli <tool> --args-file
+<path>` rather than holding a persistent MCP-over-stdio session. A
+persistent session was the original design, but the `mcp` Python SDK's
+`stdio_client()` was verified to hang indefinitely against this executable
+on this machine — a raw pipe to the exe answers `initialize` in ~2ms, but
+anyio's stdio transport never observed the response (asyncio/anyio-side
+issue, not the exe). The one-shot `cli` path is a separate code path the
+binary exposes specifically for non-interactive callers, already fast
+(<100ms per call measured), so there's no persistent-session benefit being
+given up here in practice.
 """
 
 from __future__ import annotations
@@ -20,63 +27,49 @@ import asyncio
 import json
 import os
 import re
+import tempfile
+from pathlib import Path
 from typing import Any, Dict, List, Optional
-
-from mcp import ClientSession
-from mcp.client.stdio import StdioServerParameters, stdio_client
 
 CBMM_EXECUTABLE = os.environ.get(
     "CBMM_EXECUTABLE", r"C:\Users\lingn\.local\bin\codebase-memory-mcp.exe"
 )
 CBMM_PROJECT = os.environ.get("CBMM_PROJECT", "C-Users-lingn-mini-Project")
 
-_session: Optional[ClientSession] = None
-_session_lock = asyncio.Lock()
-_stdio_ctx = None
-_session_ctx = None
-
-
-async def _get_session() -> ClientSession:
-    global _session, _stdio_ctx, _session_ctx
-    if _session is not None:
-        return _session
-    async with _session_lock:
-        if _session is not None:  # re-check after acquiring the lock
-            return _session
-        # --ui=false: a headless graph-query client has no use for
-        # codebase-memory-mcp's HTTP visualization UI, and leaving it enabled
-        # in this environment was observed to hang the stdio handshake
-        # (verified: bare invocation left stdout empty and the client never
-        # got a response; --ui=false produced clean stderr-only logging and
-        # a clean immediate shutdown on EOF).
-        params = StdioServerParameters(command=CBMM_EXECUTABLE, args=["--ui=false"])
-        _stdio_ctx = stdio_client(params)
-        read, write = await _stdio_ctx.__aenter__()
-        _session_ctx = ClientSession(read, write)
-        _session = await _session_ctx.__aenter__()
-        await _session.initialize()
-        return _session
-
 
 async def _call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-    """Call a codebase-memory-mcp tool and return its parsed JSON result.
+    """Run one codebase-memory-mcp tool via its `cli` subcommand and return its parsed JSON result.
 
-    Raises RuntimeError on a tool-reported error rather than returning a
-    silently-empty dict — callers here always wrap this in try/except so a
-    codebase-memory-mcp outage degrades to "found: false", not a crash.
+    Raises RuntimeError on a non-zero exit or unparseable stdout rather than
+    returning a silently-empty dict — callers here always wrap this in
+    try/except so a codebase-memory-mcp outage degrades to "found: false",
+    not a crash.
     """
-    session = await _get_session()
-    result = await session.call_tool(name, arguments)
-    if getattr(result, "isError", False):
-        raise RuntimeError(f"codebase-memory-mcp tool {name!r} reported an error: {result.content}")
-    structured = getattr(result, "structuredContent", None)
-    if isinstance(structured, dict):
-        return structured
-    for block in result.content or []:
-        text = getattr(block, "text", None)
-        if text:
-            return json.loads(text)
-    raise RuntimeError(f"codebase-memory-mcp tool {name!r} returned no parseable content")
+    fd, path = tempfile.mkstemp(suffix=".json")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(arguments, fh)
+        proc = await asyncio.create_subprocess_exec(
+            CBMM_EXECUTABLE, "cli", name, "--args-file", path,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"codebase-memory-mcp tool {name!r} exited {proc.returncode}: "
+            f"{stderr.decode(errors='replace').strip()}"
+        )
+    try:
+        return json.loads(stdout.decode())
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            f"codebase-memory-mcp tool {name!r} returned non-JSON stdout: "
+            f"{stdout.decode(errors='replace')!r}"
+        ) from exc
 
 
 def _escape(value: str) -> str:

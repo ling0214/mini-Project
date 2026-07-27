@@ -1,53 +1,88 @@
 # mini-Project
 
-A **Software Analyst Workbench**, not a chatbot: it helps a **Project Analyst**, **Business Analyst**, and **Tester** pick up an unfamiliar software project fast — understand it, scope change requests, assess risk, generate test cases, and hand work between roles, with every claim backed by an evidence citation and gated behind a human review step. Built to be extended to other roles without touching the core.
+Software Analyst Workflow Assistant: a review-gated workbench that helps an analyst move from a requirement or ticket to requirement analysis, clarification, impact analysis, test scenarios, and a compiled analyst report.
 
-> Working name — see [docs/architecture.md](docs/architecture.md) for the naming shortlist and rationale.
+The project is not trying to recreate Claude Skills. It uses a small skill layer, MCP-backed project graph, artifact persistence, and human review gates to support the repetitive workflow around software analysis.
 
-## Why this exists
+## Workflow
 
-Project Analysts lose days understanding a new codebase because context is scattered across a repo, an issue tracker, and tribal knowledge. Most "AI dev tools" answer *"what does this code do"* with vector-similarity search over code, which is good for developers but weak for PA/BA/Tester questions like *"what breaks if I change this endpoint"* or *"what should I test here"* — those are graph-traversal questions, not similarity questions.
-
-This project answers them with a small **project graph** (code → calls → issues), exposed as an **MCP server**, consumed by a **skill + agent/role-profile harness** with a real database behind it — see [docs/proposal.md](docs/proposal.md) for the full write-up (literature review, market comparison, risk analysis) and [docs/architecture.md](docs/architecture.md) for how it's actually built.
-
-## Architecture at a glance
-
-```
-Project Graph (code + issues)
-        │
-   MCP Tool Layer   ← Python, exposes get_endpoint_info / trace_impact / get_test_coverage / search_issues
-        │
-   Skill Layer       ← code-qa, impact-analysis, test-case-gen (implemented); weekly-report (design only)
-        │
-   Agent / Role Layer ← Project Analyst, Business Analyst, Tester — one Agent class per role, deterministic
-        │                permission checks + deterministic agent-to-agent handoff (reviewed impact-analysis
-        │                → test-case-gen)
-        │
-   Harness (Spring Boot) → routes requests, enforces the human-review gate, persists every artifact
-        │
-   Database (H2, file mode) → analysis_artifacts + evidence, survives a restart
+```text
+Requirement / Ticket
+        |
+Requirement Analysis
+        |
+Clarification Loop
+        |
+Human Review Gate
+        |
+Impact Analysis
+        |
+Test Scenario Generation
+        |
+Analyst Report
 ```
 
-Full design rationale (why graph-based retrieval over plain RAG, why skills are separate from profiles, why every AI output needs an evidence trail, why the interaction model is a workbench and not a chatbox) is in [docs/architecture.md](docs/architecture.md) and [docs/proposal.md](docs/proposal.md).
+## Architecture
 
-## Tech stack
+```text
+Project Graph + Issues
+        |
+MCP Tool Layer
+        |
+Skill Layer
+        |
+Software Analyst Agent Profile
+        |
+Coordinator / Review Gate / Artifact Persistence
+        |
+React Workflow UI
+```
 
-- **Backend / harness**: Spring Boot (Java) — agent/role routing, skill orchestration, human-review gate, persistence, REST API
-- **MCP server**: Python — project graph construction (AST parsing + issue ingestion) and MCP tool exposure
-- **Database**: H2 (file mode) via Spring Data JPA
-- **Frontend**: React (Vite) app is primary ([frontend/src/main.jsx](frontend/src/main.jsx), `npm run dev` from `frontend/`); a vanilla HTML/JS prototype ([frontend/prototype/code-qa.html](frontend/prototype/code-qa.html)) is retained as a reference/fallback
-- **Target project (demo data)**: currently a hand-authored sample target (`mcp-server/sample_target/`); a real public open-source repo + its GitHub Issues is planned but not done
+## Implemented
 
-## Status
+- `requirement-analysis`: extracts business rules, ambiguities, missing information, assumptions, potential affected areas, confidence, and evidence.
+- Clarification API: creates a linked requirement-analysis artifact with the analyst's additional information.
+- Requirement-to-impact handoff: reviewed requirement artifacts become the source of truth for impact analysis.
+- `impact-analysis`: identifies affected modules, risk notes, rough effort, missing evidence, confidence, and evidence.
+- `test-case-gen`: generates positive, negative, and edge test scenarios from reviewed impact analysis modules.
+- `timeline-estimation`: derives delivery estimates from reviewed impact artifacts and linked test artifacts.
+- `handoff-summary`: compiles reviewed requirement, impact, and test artifacts into a persisted handoff summary.
+- Artifact history: every skill run is persisted with evidence, review state, and parent-child lineage.
+- React frontend: primary UI is the Software Analyst guided workflow.
 
-Four skills implemented and verified end-to-end against the real backend: `code-qa`, `impact-analysis` (including a read-only GitHub PR connector), `test-case-gen`, and `timeline-estimation`. Every artifact is persisted with its review state and survives a restart; a history view lists and reopens past artifacts, with a visible lineage link for any handed-off artifact. Two deterministic handoffs run off a reviewed `impact-analysis` artifact: to `test-case-gen` (Tester role), and to `timeline-estimation` (Project Analyst), the latter getting more grounded — not just more confident — once a `test-case-gen` handoff already exists for the same source. A reviewed artifact can also hand off externally — Jira issue creation and Bitbucket PR comments are both **live-verified** against real accounts (Jira ticket KAN-2, Bitbucket comment 828611336), not just dry-run tested, with a persisted audit trail (`GET /api/artifacts/{id}/external-handoffs`). See [docs/architecture.md](docs/architecture.md) for the full layer-by-layer design and [docs/proposal.md](docs/proposal.md) Chapter 10 for the continuously-reconciled phase-by-phase status. Not yet done: `weekly-report`, a real cloned demo repository, multi-language parsing, a Bitbucket *read* connector (PR-as-input only works for GitHub today), and any LLM-based synthesizer (no autonomous skill selection — every route is deterministic).
+## Main Paths
 
-## Roles supported
+- Backend: [backend](backend)
+- Frontend: [frontend](frontend)
+- MCP server: [mcp-server](mcp-server)
+- Architecture: [docs/architecture.md](docs/architecture.md)
+- Proposal: [docs/proposal.md](docs/proposal.md)
+- Software Analyst profile: [profiles/software-analyst.md](profiles/software-analyst.md)
 
-| Role | Skills available today |
-|---|---|
-| Project Analyst | `code-qa`, `impact-analysis`, `timeline-estimation` (all implemented); `weekly-report` (spec only) |
-| Business Analyst | `code-qa`, `impact-analysis` (both implemented) — same skills as Project Analyst; scoped to checking a change against what the business asked for, not requirement authoring (BRDs, user stories) |
-| Tester | `code-qa`, `test-case-gen` (both implemented) — can also receive a handoff from a reviewed Project Analyst/Business Analyst `impact-analysis` artifact |
+## Run
 
-New roles are added by defining a profile persona under [profiles/](profiles/) plus one new `Agent` class under `backend/.../agent/` — the graph, MCP tools, and skills are shared, not duplicated.
+Start backend:
+
+```powershell
+cd backend
+mvn spring-boot:run
+```
+
+Start frontend:
+
+```powershell
+cd frontend
+npm run dev
+```
+
+Open:
+
+```text
+http://127.0.0.1:5173
+```
+
+The frontend calls the backend at `http://localhost:8080` by default.
+
+## Current Scope
+
+This is a deterministic workflow assistant with rule-based synthesis. It does not yet include autonomous LLM planning, production auth, multi-repo project selection, or live issue ingestion.

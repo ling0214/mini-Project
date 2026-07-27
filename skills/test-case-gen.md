@@ -1,10 +1,10 @@
 # Skill: test-case-gen
 
-Used by: Tester
+Used by: Software Analyst workflow
 
 ## Input
 
-A function/endpoint name, or the output of `impact-analysis` (affected modules) handed off directly — the harness chains these two skills when a change request has already been through impact analysis.
+A function/endpoint name, or the output of `impact-analysis` handed off from a reviewed impact artifact. In the guided workflow this happens after requirement analysis, clarification, review, and impact analysis.
 
 ## Allowed MCP tools
 
@@ -13,25 +13,25 @@ A function/endpoint name, or the output of `impact-analysis` (affected modules) 
 
 ## Procedure
 
-1. Resolve the target via `get_endpoint_info` — pull signature, inputs, callers/callees.
-2. Call `get_test_coverage` to see what's already tested, so generated cases fill gaps instead of duplicating existing coverage.
-3. Generate cases in three buckets: positive, negative, edge — each case must reference which input/branch it exercises, not just a generic description.
-4. If `get_endpoint_info` can't resolve the target in the graph, stop and report it rather than generating generic, ungrounded test cases.
+1. Resolve the target via `get_endpoint_info`.
+2. Call `get_test_coverage` to see what is already tested.
+3. Generate cases in three buckets: positive, negative, and edge.
+4. If the graph cannot resolve the target, report the gap instead of generating generic cases.
 
-## Output schema
+## Output Schema
 
 ```json
 {
   "target": "string",
-  "existing_coverage": ["string — test names already covering this path"],
+  "existing_coverage": ["string"],
   "cases": [
     {"id": "string", "type": "positive | negative | edge", "input": "string", "expected": "string", "rationale": "string"}
   ],
-  "regression_checklist": ["string — cases to re-run if this area changes again"],
+  "regression_checklist": ["string"],
   "confidence": "low | medium | high"
 }
 ```
 
-## Review gate rule
+## Review Gate
 
-Rendered as a draft test sheet; a human marks each case "keep / discard / edit" before it's exported. AI-generated tests typically cover 60-80% of what a human tester would write — this skill is a first draft, not a replacement for tester judgment.
+The result is a draft test sheet. A human analyst remains responsible for accepting, editing, or discarding generated cases.
