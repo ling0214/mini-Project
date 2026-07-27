@@ -93,6 +93,75 @@ class ProjectGraph:
             "called_by": self.callers_of(name),
         }
 
+    def trace_impact(self, name: str, max_hops: int = 2) -> dict | None:
+        """Blast radius from `name`: everything it transitively calls
+        (relation="calls") and everything that transitively calls it
+        (relation="called_by"), out to max_hops in each direction.
+
+        Each affected function is reported once, at the hop count where it
+        was first reached (BFS, not DFS) — a function reachable both as a
+        caller and a callee only appears under whichever direction found it
+        first.
+        """
+        origin = self.functions.get(name)
+        if origin is None:
+            return None
+
+        visited = {name}
+        affected: list[dict] = []
+
+        for direction in ("calls", "called_by"):
+            frontier = [name]
+            hop = 0
+            while frontier and hop < max_hops:
+                hop += 1
+                next_frontier = []
+                for current in frontier:
+                    if direction == "calls":
+                        neighbors = [c for c in self.functions[current].calls if c in self.functions]
+                    else:
+                        neighbors = self.callers_of(current)
+                    for neighbor in neighbors:
+                        if neighbor in visited:
+                            continue
+                        visited.add(neighbor)
+                        fn = self.functions[neighbor]
+                        affected.append({
+                            "name": neighbor,
+                            "file": fn.file,
+                            "line": fn.lineno,
+                            "hops": hop,
+                            "relation": direction,
+                        })
+                        next_frontier.append(neighbor)
+                frontier = next_frontier
+
+        return {
+            "name": origin.name,
+            "file": origin.file,
+            "line": origin.lineno,
+            "affected": affected,
+        }
+
+    def get_test_coverage(self, name: str) -> dict | None:
+        """Which test_* functions in the graph call `name` directly.
+
+        Reuses the same call-graph data built for get_endpoint_info/
+        trace_impact — a test function is just another FunctionNode whose
+        name happens to start with "test", so "is this covered" is "does
+        any test_* node's calls list include this name", no separate
+        scanning pass. Only catches direct calls (syntactic, not
+        type-resolved) — same limitation as the rest of this MVP graph.
+        """
+        if name not in self.functions:
+            return None
+        covered_by = [
+            {"test": fn.name, "file": fn.file, "line": fn.lineno}
+            for fn in self.functions.values()
+            if fn.name.startswith("test") and name in fn.calls
+        ]
+        return {"name": name, "covered_by": covered_by}
+
     def search_issues(self, query: str) -> list[dict]:
         terms = {
             w.lower() for w in _WORD.findall(query)
