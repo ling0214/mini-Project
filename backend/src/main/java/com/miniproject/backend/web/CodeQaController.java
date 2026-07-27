@@ -16,10 +16,9 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * CORS is wide open (any origin) because this is a local-only dev prototype
- * with no auth yet (see frontend/prototype/code-qa.html, opened via file://
- * or a static server) - see docs/architecture.md, Section 6.2 "Enterprise
- * authentication and access control" is explicitly future scope, not this one.
+ * CORS is wide open because this is a local-only dev workbench with no auth
+ * yet. Production authentication and access control are explicitly future
+ * scope; see docs/architecture.md.
  */
 @RestController
 @RequestMapping("/api/skills")
@@ -65,6 +64,15 @@ public class CodeQaController {
             throw new IllegalArgumentException("profile and target are required");
         }
         return coordinator.testCaseGen(request.profile(), request.target());
+    }
+
+    @CrossOrigin(origins = "*")
+    @PostMapping("/requirement-analysis")
+    public RequirementAnalysisResponse requirementAnalysis(@RequestBody RequirementAnalysisRequest request) {
+        if (request.profile() == null || request.description() == null || request.description().isBlank()) {
+            throw new IllegalArgumentException("profile and description are required");
+        }
+        return RequirementAnalysisResponse.of(coordinator.requirementAnalysis(request.profile(), request.description()));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

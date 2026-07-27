@@ -7,8 +7,11 @@ import com.miniproject.backend.github.GitHubPrReader;
 import com.miniproject.backend.persistence.ArtifactPersistenceService;
 import com.miniproject.backend.skills.CodeQaResult;
 import com.miniproject.backend.skills.CodeQaSkill;
+import com.miniproject.backend.skills.HandoffSummaryResult;
 import com.miniproject.backend.skills.ImpactAnalysisResult;
 import com.miniproject.backend.skills.ImpactAnalysisSkill;
+import com.miniproject.backend.skills.RequirementAnalysisResult;
+import com.miniproject.backend.skills.RequirementAnalysisSkill;
 import com.miniproject.backend.skills.TestCaseGenResult;
 import com.miniproject.backend.skills.TestCaseGenSkill;
 import com.miniproject.backend.skills.TimelineEstimationResult;
@@ -16,9 +19,11 @@ import com.miniproject.backend.skills.TimelineEstimationSynthesizer;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -39,6 +44,7 @@ public class CoordinatorService {
     private final GitHubPrReader prReader;
     private final TestCaseGenSkill testCaseGenSkill;
     private final TimelineEstimationSynthesizer timelineEstimationSynthesizer;
+    private final RequirementAnalysisSkill requirementAnalysisSkill;
     private final ArtifactPersistenceService persistence;
     private final AgentRegistry agentRegistry;
 
@@ -48,6 +54,7 @@ public class CoordinatorService {
             GitHubPrReader prReader,
             TestCaseGenSkill testCaseGenSkill,
             TimelineEstimationSynthesizer timelineEstimationSynthesizer,
+            RequirementAnalysisSkill requirementAnalysisSkill,
             ArtifactPersistenceService persistence,
             AgentRegistry agentRegistry) {
         this.codeQaSkill = codeQaSkill;
@@ -55,6 +62,7 @@ public class CoordinatorService {
         this.prReader = prReader;
         this.testCaseGenSkill = testCaseGenSkill;
         this.timelineEstimationSynthesizer = timelineEstimationSynthesizer;
+        this.requirementAnalysisSkill = requirementAnalysisSkill;
         this.persistence = persistence;
         this.agentRegistry = agentRegistry;
     }
@@ -96,6 +104,72 @@ public class CoordinatorService {
         Artifact<ImpactAnalysisResult> artifact =
                 Artifact.draft(profile + "-agent", "impact-analysis", withPrEvidence, withPrEvidence.evidence());
         persistence.save(artifact, profile, prUrl);
+        return artifact;
+    }
+
+    public Artifact<RequirementAnalysisResult> requirementAnalysis(String profile, String description) {
+        requireSkillAllowed(profile, "requirement-analysis");
+        RequirementAnalysisResult result = requirementAnalysisSkill.run(description);
+        Artifact<RequirementAnalysisResult> artifact =
+                Artifact.draft(profile + "-agent", "requirement-analysis", result, result.evidence());
+        persistence.save(artifact, profile, description);
+        return artifact;
+    }
+
+    /**
+     * Unlike the other handoff methods, this deliberately does NOT require the
+     * source artifact to be reviewed first — clarify exists precisely because
+     * the artifact ISN'T ready for review yet (status NEEDS_CLARIFICATION).
+     * Produces a new linked artifact (parentTaskId = sourceTaskId) rather than
+     * mutating the original, so artifact history stays append-only.
+     */
+    public Artifact<RequirementAnalysisResult> clarifyRequirementAnalysis(
+            String sourceTaskId, String profile, String additionalInfo) {
+        requireSkillAllowed(profile, "requirement-analysis");
+
+        Artifact<Object> source = persistence.findArtifact(sourceTaskId)
+                .orElseThrow(() -> new IllegalArgumentException("No artifact found for task_id " + sourceTaskId));
+        if (!"requirement-analysis".equals(source.skill())) {
+            throw new IllegalArgumentException(
+                    "Clarify requires a requirement-analysis source artifact, got: " + source.skill());
+        }
+
+        String originalDescription = persistence.findInputText(sourceTaskId).orElse("");
+        String augmentedDescription = originalDescription + "\n\nClarifications:\n" + additionalInfo;
+
+        RequirementAnalysisResult result = requirementAnalysisSkill.run(augmentedDescription);
+        Artifact<RequirementAnalysisResult> artifact =
+                Artifact.draft(profile + "-agent", "requirement-analysis", result, result.evidence());
+        persistence.save(artifact, profile, augmentedDescription, sourceTaskId);
+        return artifact;
+    }
+
+    /**
+     * Software Analyst workflow handoff: a reviewed requirement-analysis
+     * artifact becomes the source of truth for impact-analysis. This preserves
+     * clarification text because the impact input is loaded from the persisted
+     * requirement artifact input, not from the UI's original text box.
+     */
+    public Artifact<ImpactAnalysisResult> handoffToImpactAnalysis(String sourceTaskId, String profile) {
+        requireSkillAllowed(profile, "impact-analysis");
+
+        Artifact<Object> source = persistence.findArtifact(sourceTaskId)
+                .orElseThrow(() -> new IllegalArgumentException("No artifact found for task_id " + sourceTaskId));
+        if (!"requirement-analysis".equals(source.skill())) {
+            throw new IllegalArgumentException(
+                    "Handoff to impact-analysis requires a requirement-analysis source artifact, got: " + source.skill());
+        }
+        if (!source.reviewed()) {
+            throw new IllegalArgumentException(
+                    "Source artifact " + sourceTaskId + " must be reviewed before impact analysis");
+        }
+
+        String requirementText = persistence.findInputText(sourceTaskId)
+                .orElseThrow(() -> new IllegalArgumentException("No input text found for artifact " + sourceTaskId));
+        ImpactAnalysisResult result = impactAnalysisSkill.run(requirementText);
+        Artifact<ImpactAnalysisResult> artifact =
+                Artifact.draft(profile + "-agent", "impact-analysis", result, result.evidence());
+        persistence.save(artifact, profile, requirementText, sourceTaskId);
         return artifact;
     }
 
@@ -193,6 +267,205 @@ public class CoordinatorService {
                 Artifact.draft(profile + "-agent", "timeline-estimation", result, result.evidence());
         persistence.save(artifact, profile, "Timeline estimate for " + sourceTaskId, sourceTaskId);
         return artifact;
+    }
+
+    /**
+     * Final Software Analyst workflow output: compile reviewed requirement and
+     * impact artifacts plus generated test plans into a persisted handoff
+     * summary. This makes the last workflow step auditable instead of
+     * frontend-only state.
+     */
+    @SuppressWarnings("unchecked")
+    public Artifact<HandoffSummaryResult> handoffSummary(
+            String impactTaskId, String profile, String requirementTaskId, List<String> testTaskIds) {
+        requireSkillAllowed(profile, "handoff-summary");
+
+        Artifact<Object> requirement = persistence.findArtifact(requirementTaskId)
+                .orElseThrow(() -> new IllegalArgumentException("No artifact found for task_id " + requirementTaskId));
+        if (!"requirement-analysis".equals(requirement.skill())) {
+            throw new IllegalArgumentException(
+                    "Handoff summary requires a requirement-analysis artifact, got: " + requirement.skill());
+        }
+        if (!requirement.reviewed()) {
+            throw new IllegalArgumentException(
+                    "Requirement artifact " + requirementTaskId + " must be reviewed before summary generation");
+        }
+
+        Artifact<Object> impact = persistence.findArtifact(impactTaskId)
+                .orElseThrow(() -> new IllegalArgumentException("No artifact found for task_id " + impactTaskId));
+        if (!"impact-analysis".equals(impact.skill())) {
+            throw new IllegalArgumentException(
+                    "Handoff summary requires an impact-analysis source artifact, got: " + impact.skill());
+        }
+        if (!impact.reviewed()) {
+            throw new IllegalArgumentException(
+                    "Impact artifact " + impactTaskId + " must be reviewed before summary generation");
+        }
+
+        Map<String, Object> requirementResult = resultMap(requirement, "requirement-analysis");
+        Map<String, Object> impactResult = resultMap(impact, "impact-analysis");
+        List<Artifact<Object>> tests = findSummaryTestArtifacts(impactTaskId, testTaskIds);
+
+        String requirementText = persistence.findInputText(requirementTaskId).orElse("");
+        List<String> openQuestions = new ArrayList<>(stringList(requirementResult, "missing_information"));
+        openQuestions.addAll(ambiguityNotes(requirementResult));
+
+        HandoffSummaryResult result = new HandoffSummaryResult(
+                summarizeRequirement(requirementText),
+                stringList(requirementResult, "business_rules"),
+                extractClarifications(requirementText),
+                stringList(requirementResult, "assumptions"),
+                impactAreas(impactResult),
+                riskNotes(impactResult),
+                stringValue(impactResult.get("risk_level"), "unknown"),
+                effortEstimate(impactResult),
+                testPlanSummaries(tests),
+                openQuestions,
+                combinedEvidence(requirement, impact, tests));
+
+        Artifact<HandoffSummaryResult> artifact =
+                Artifact.draft(profile + "-agent", "handoff-summary", result, result.evidence());
+        persistence.save(artifact, profile,
+                "Handoff summary for requirement " + requirementTaskId + " and impact " + impactTaskId,
+                impactTaskId);
+        return artifact;
+    }
+
+    private List<Artifact<Object>> findSummaryTestArtifacts(String impactTaskId, List<String> testTaskIds) {
+        List<Artifact<Object>> tests;
+        if (testTaskIds == null || testTaskIds.isEmpty()) {
+            tests = persistence.findChildren(impactTaskId).stream()
+                    .filter(child -> "test-case-gen".equals(child.skill()))
+                    .toList();
+        } else {
+            tests = testTaskIds.stream()
+                    .filter(Objects::nonNull)
+                    .map(taskId -> persistence.findArtifact(taskId)
+                            .orElseThrow(() -> new IllegalArgumentException("No artifact found for task_id " + taskId)))
+                    .toList();
+        }
+
+        for (Artifact<Object> test : tests) {
+            if (!"test-case-gen".equals(test.skill())) {
+                throw new IllegalArgumentException(
+                        "Handoff summary test artifacts must be test-case-gen, got: " + test.skill());
+            }
+        }
+        return tests;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> resultMap(Artifact<Object> artifact, String expectedSkill) {
+        if (artifact.result() instanceof Map<?, ?> map) {
+            return (Map<String, Object>) map;
+        }
+        throw new IllegalStateException("Malformed " + expectedSkill + " result for artifact " + artifact.taskId());
+    }
+
+    private static String summarizeRequirement(String inputText) {
+        String withoutClarifications = inputText == null ? "" : inputText.split("\\R\\RClarifications:", 2)[0];
+        String compact = withoutClarifications.replaceAll("\\s+", " ").trim();
+        if (compact.isBlank()) {
+            return "(no requirement text recorded)";
+        }
+        return compact.length() > 260 ? compact.substring(0, 260) + "..." : compact;
+    }
+
+    private static List<String> extractClarifications(String inputText) {
+        if (inputText == null) {
+            return List.of();
+        }
+        int index = inputText.indexOf("Clarifications:");
+        if (index < 0) {
+            return List.of();
+        }
+        return inputText.substring(index + "Clarifications:".length()).lines()
+                .map(String::trim)
+                .filter(line -> !line.isBlank())
+                .toList();
+    }
+
+    private static List<String> stringList(Map<String, Object> map, String key) {
+        Object value = map.get(key);
+        if (!(value instanceof List<?> list)) {
+            return List.of();
+        }
+        return list.stream().map(String::valueOf).toList();
+    }
+
+    private static List<String> ambiguityNotes(Map<String, Object> requirementResult) {
+        return mapList(requirementResult, "ambiguities").stream()
+                .map(item -> stringValue(item.get("note"), ""))
+                .filter(note -> !note.isBlank())
+                .toList();
+    }
+
+    private static List<HandoffSummaryResult.ImpactArea> impactAreas(Map<String, Object> impactResult) {
+        return mapList(impactResult, "affected_modules").stream()
+                .map(item -> new HandoffSummaryResult.ImpactArea(
+                        stringValue(item.get("name"), ""),
+                        stringValue(item.get("path"), ""),
+                        stringValue(item.get("reason"), "")))
+                .toList();
+    }
+
+    private static List<HandoffSummaryResult.RiskNote> riskNotes(Map<String, Object> impactResult) {
+        return mapList(impactResult, "risk_notes").stream()
+                .map(item -> new HandoffSummaryResult.RiskNote(
+                        stringValue(item.get("note"), ""),
+                        stringValue(item.get("evidence"), "")))
+                .toList();
+    }
+
+    private static String effortEstimate(Map<String, Object> impactResult) {
+        Object value = impactResult.get("rough_effort");
+        if (!(value instanceof Map<?, ?> effort)) {
+            return "unknown";
+        }
+        String estimate = stringValue(effort.get("estimate"), "unknown");
+        String basis = stringValue(effort.get("basis"), "");
+        return basis.isBlank() ? estimate : estimate + " - " + basis;
+    }
+
+    private static List<HandoffSummaryResult.TestPlanSummary> testPlanSummaries(List<Artifact<Object>> tests) {
+        return tests.stream()
+                .map(test -> {
+                    Map<String, Object> result = resultMap(test, "test-case-gen");
+                    List<String> checklist = stringList(result, "regression_checklist");
+                    int caseCount = result.get("cases") instanceof List<?> cases ? cases.size() : 0;
+                    return new HandoffSummaryResult.TestPlanSummary(
+                            stringValue(result.get("target"), "(unknown target)"), caseCount, checklist);
+                })
+                .toList();
+    }
+
+    private static List<Evidence> combinedEvidence(
+            Artifact<Object> requirement, Artifact<Object> impact, List<Artifact<Object>> tests) {
+        LinkedHashSet<Evidence> evidence = new LinkedHashSet<>();
+        evidence.addAll(requirement.evidence());
+        evidence.addAll(impact.evidence());
+        tests.forEach(test -> evidence.addAll(test.evidence()));
+        return new ArrayList<>(evidence);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> mapList(Map<String, Object> map, String key) {
+        Object value = map.get(key);
+        if (!(value instanceof List<?> list)) {
+            return Collections.emptyList();
+        }
+        return list.stream()
+                .filter(Map.class::isInstance)
+                .map(item -> (Map<String, Object>) item)
+                .toList();
+    }
+
+    private static String stringValue(Object value, String fallback) {
+        if (value == null) {
+            return fallback;
+        }
+        String text = String.valueOf(value);
+        return text.isBlank() ? fallback : text;
     }
 
     private void requireSkillAllowed(String profile, String skill) {

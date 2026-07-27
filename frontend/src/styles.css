@@ -146,6 +146,10 @@ button {
   border-color: var(--line);
 }
 
+.workflow-step.complete {
+  color: var(--teal);
+}
+
 .workflow-step span {
   width: 24px;
   height: 24px;
@@ -153,8 +157,60 @@ button {
   border-radius: 7px;
   display: grid;
   place-items: center;
+  flex: none;
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
   font-size: 0.72rem;
+}
+
+.workflow-step.complete span {
+  background: var(--teal);
+  border-color: var(--teal);
+  color: #fff;
+}
+
+.workflow-step-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  line-height: 1.3;
+}
+
+.workflow-step-text small {
+  color: var(--ink-soft);
+  font-weight: 600;
+  font-size: 0.72rem;
+}
+
+.rail-reset {
+  margin-top: 1rem;
+  width: 100%;
+}
+
+.legacy-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.75rem;
+}
+
+.mode-switch {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.mode-switch button {
+  border: none;
+  background: var(--paper-raised);
+  color: var(--ink-soft);
+  padding: 0.4rem 0.85rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.mode-switch button.active {
+  background: var(--teal);
+  color: #fff;
 }
 
 .rail-divider {
@@ -445,12 +501,14 @@ textarea {
 }
 
 .status-pill.reviewed,
+.tag.reviewed,
 .tag.good {
   color: var(--teal);
   background: var(--teal-soft);
 }
 
 .status-pill.unreviewed,
+.tag.unreviewed,
 .tag.bad {
   color: var(--rust);
   background: var(--rust-soft);
@@ -510,6 +568,16 @@ textarea {
   letter-spacing: 0.05em;
 }
 
+.clarification-panel {
+  margin-bottom: 1rem;
+  border-left: 4px solid var(--amber);
+}
+
+.clarification-panel textarea {
+  margin-top: 0.6rem;
+  min-height: 88px;
+}
+
 .compact-controls {
   display: flex;
   gap: 1rem;
@@ -540,6 +608,47 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
+}
+
+.history-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.history-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.history-row-links {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding-right: 0.6rem;
+  flex: none;
+}
+
+.external-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #fff;
+  text-decoration: none;
+  flex: none;
+}
+
+.external-icon.jira {
+  background: #0052cc;
+}
+
+.external-icon.bitbucket {
+  background: #2684ff;
 }
 
 .evidence-list li,

@@ -2,23 +2,30 @@
 
 ## Type
 
-Deterministic (no LLM call). The user already tells the system who they are by picking a profile in the UI — adding an LLM to guess "which role is this" would add unpredictability without solving a real problem.
+Deterministic workflow coordinator. It does not call an LLM to decide which skill to run.
 
 ## Responsibilities
 
-1. Read the active profile (`project-analyst` or `tester`) from the session/UI state.
-2. Route the incoming request to that profile's agent (`project-analyst-agent` or `tester-agent`).
-3. Watch for handoff conditions and surface them as a suggestion, not an automatic action:
-   - `impact-analysis` result reviewed + accepted → suggest "send affected modules to Tester agent for test-case-gen"
-4. Enforce the review gate at the boundary: an artifact with `reviewed: false` may be passed to another agent as *draft context* only — never presented to a human as a confirmed fact by a downstream agent.
+1. Read the active profile from the request. The guided frontend uses `software-analyst`.
+2. Check that the profile is allowed to use the requested skill.
+3. Run the selected skill and persist the result as an artifact.
+4. Enforce human review gates before downstream handoffs.
+5. Preserve lineage with `parent_task_id` when one artifact is created from another.
 
-## Handoff artifact envelope
+## Handoff Rules
+
+- Clarification can run from a `requirement-analysis` artifact even before review, because clarification is how the analyst resolves missing information.
+- Impact analysis can run from a `requirement-analysis` artifact only after that requirement artifact is reviewed.
+- Test case generation can run from an `impact-analysis` artifact only after that impact artifact is reviewed.
+- Timeline estimation can run from an `impact-analysis` artifact only after that impact artifact is reviewed.
+
+## Artifact Envelope
 
 ```json
 {
   "schema_version": "artifact.v1",
-  "agent": "string — which agent produced this",
-  "skill": "string — which skill produced this",
+  "agent": "string",
+  "skill": "string",
   "task_id": "string",
   "created_at": "string",
   "result": {},
@@ -27,9 +34,10 @@ Deterministic (no LLM call). The user already tells the system who they are by p
 }
 ```
 
-`reviewed` flips to `true` only when a human accepts it in the UI. This mirrors the artifact-handoff discipline already proven in a production incident-response multi-agent pipeline: no confirmed finding without evidence, no downstream action on an unreviewed claim.
+`reviewed` flips to `true` only when a human accepts it in the UI.
 
-## Explicitly out of scope for v1
+## Out Of Scope
 
-- No autonomous multi-step planning across agents (e.g. auto-running test-case-gen without a human accepting the impact analysis first).
-- No LLM-based intent classification. If this becomes necessary later (e.g. free-text input where the role isn't obvious), it's a scoped addition here, not a rewrite.
+- No autonomous multi-step planning.
+- No LLM-based intent classification.
+- No downstream action from an unreviewed artifact.

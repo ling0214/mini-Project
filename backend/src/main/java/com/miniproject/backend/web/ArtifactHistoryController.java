@@ -7,6 +7,8 @@ import com.miniproject.backend.integrations.ExternalHandoffRequest;
 import com.miniproject.backend.integrations.ExternalHandoffResult;
 import com.miniproject.backend.integrations.ExternalHandoffService;
 import com.miniproject.backend.persistence.ArtifactPersistenceService;
+import com.miniproject.backend.skills.HandoffSummaryResult;
+import com.miniproject.backend.skills.ImpactAnalysisResult;
 import com.miniproject.backend.skills.TestCaseGenResult;
 import com.miniproject.backend.skills.TimelineEstimationResult;
 import org.springframework.http.HttpStatus;
@@ -22,6 +24,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
 
 /**
@@ -49,8 +52,28 @@ public class ArtifactHistoryController {
 
     @CrossOrigin(origins = "*")
     @GetMapping
-    public List<ArtifactPersistenceService.ArtifactSummary> list() {
-        return persistence.listSummaries();
+    public List<ArtifactSummaryView> list() {
+        List<ArtifactPersistenceService.ArtifactSummary> summaries = persistence.listSummaries();
+        List<String> taskIds = summaries.stream().map(ArtifactPersistenceService.ArtifactSummary::taskId).toList();
+        Map<String, List<ExternalHandoffResult>> handoffsByArtifact = externalHandoffService.listCreatedForArtifacts(taskIds);
+        return summaries.stream()
+                .map(summary -> ArtifactSummaryView.of(
+                        summary,
+                        latestUrlFor(handoffsByArtifact.get(summary.taskId()), "jira"),
+                        latestUrlFor(handoffsByArtifact.get(summary.taskId()), "bitbucket")))
+                .toList();
+    }
+
+    private static String latestUrlFor(List<ExternalHandoffResult> handoffs, String destination) {
+        if (handoffs == null) {
+            return null;
+        }
+        return handoffs.stream()
+                .filter(h -> destination.equals(h.destination()))
+                .map(ExternalHandoffResult::externalUrl)
+                .filter(java.util.Objects::nonNull)
+                .findFirst()
+                .orElse(null);
     }
 
     @CrossOrigin(origins = "*")
@@ -78,6 +101,16 @@ public class ArtifactHistoryController {
     }
 
     @CrossOrigin(origins = "*")
+    @PostMapping("/{taskId}/handoff/impact-analysis")
+    public Artifact<ImpactAnalysisResult> handoffToImpactAnalysis(
+            @PathVariable String taskId, @RequestBody HandoffImpactAnalysisRequest request) {
+        if (request.profile() == null || request.profile().isBlank()) {
+            throw new IllegalArgumentException("profile is required");
+        }
+        return coordinator.handoffToImpactAnalysis(taskId, request.profile());
+    }
+
+    @CrossOrigin(origins = "*")
     @PostMapping("/{taskId}/handoff/timeline-estimation")
     public Artifact<TimelineEstimationResult> handoffToTimelineEstimation(
             @PathVariable String taskId, @RequestBody TimelineEstimationRequest request) {
@@ -86,6 +119,17 @@ public class ArtifactHistoryController {
         }
         return coordinator.handoffToTimelineEstimation(
                 taskId, request.profile(), request.developers(), request.testersAvailable());
+    }
+
+    @CrossOrigin(origins = "*")
+    @PostMapping("/{taskId}/handoff/handoff-summary")
+    public Artifact<HandoffSummaryResult> handoffSummary(
+            @PathVariable String taskId, @RequestBody HandoffSummaryRequest request) {
+        if (request.profile() == null || request.profile().isBlank()
+                || request.requirementTaskId() == null || request.requirementTaskId().isBlank()) {
+            throw new IllegalArgumentException("profile and requirementTaskId are required");
+        }
+        return coordinator.handoffSummary(taskId, request.profile(), request.requirementTaskId(), request.testTaskIds());
     }
 
     @CrossOrigin(origins = "*")
@@ -99,6 +143,17 @@ public class ArtifactHistoryController {
     @GetMapping("/{taskId}/external-handoffs")
     public List<ExternalHandoffResult> listExternalHandoffs(@PathVariable String taskId) {
         return externalHandoffService.listForArtifact(taskId);
+    }
+
+    @CrossOrigin(origins = "*")
+    @PostMapping("/{taskId}/clarify")
+    public RequirementAnalysisResponse clarify(
+            @PathVariable String taskId, @RequestBody ClarifyRequirementAnalysisRequest request) {
+        if (request.profile() == null || request.additionalInfo() == null || request.additionalInfo().isBlank()) {
+            throw new IllegalArgumentException("profile and additionalInfo are required");
+        }
+        return RequirementAnalysisResponse.of(
+                coordinator.clarifyRequirementAnalysis(taskId, request.profile(), request.additionalInfo()));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

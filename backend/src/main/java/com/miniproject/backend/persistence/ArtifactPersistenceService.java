@@ -71,6 +71,11 @@ public class ArtifactPersistenceService {
         return repository.findById(taskId).map(this::toArtifact);
     }
 
+    @Transactional(readOnly = true)
+    public Optional<String> findInputText(String taskId) {
+        return repository.findById(taskId).map(AnalysisArtifactEntity::getInputText);
+    }
+
     /** Every artifact created via a handoff (Section 5.7) from parentTaskId, of any skill. */
     @Transactional(readOnly = true)
     public List<Artifact<Object>> findChildren(String parentTaskId) {

@@ -4,7 +4,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.Set;
 
-/** agents/project-analyst-agent.md. */
+/** Legacy compatibility profile. The guided workflow uses SoftwareAnalystAgent. */
 @Component
 public class ProjectAnalystAgent implements Agent {
 
@@ -15,6 +15,6 @@ public class ProjectAnalystAgent implements Agent {
 
     @Override
     public Set<String> allowedSkills() {
-        return Set.of("code-qa", "impact-analysis", "timeline-estimation", "weekly-report");
+        return Set.of("code-qa", "impact-analysis", "timeline-estimation");
     }
 }

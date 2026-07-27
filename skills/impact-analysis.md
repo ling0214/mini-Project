@@ -1,6 +1,6 @@
 # Skill: impact-analysis
 
-Used by: Project Analyst
+Used by: Software Analyst workflow
 
 ## Input
 
