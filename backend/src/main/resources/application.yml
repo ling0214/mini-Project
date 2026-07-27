@@ -4,8 +4,27 @@ server:
 spring:
   application:
     name: mini-project-backend
+  # backend/src/main/resources/application-local.yml is gitignored
+  # (**/application-local.yml) — put secrets there, e.g.:
+  #   anthropic:
+  #     api-key: sk-ant-...
+  # "optional:" means nothing breaks if the file doesn't exist yet.
+  config:
+    import: optional:classpath:application-local.yml
   jackson:
     property-naming-strategy: SNAKE_CASE
+  datasource:
+    url: jdbc:h2:file:./data/miniproject;AUTO_SERVER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: false
 
 mcp:
   # Relative to the backend module's working directory (default when running
@@ -13,3 +32,37 @@ mcp:
   # you run the jar from elsewhere.
   python-executable: ../mcp-server/.venv/Scripts/python.exe
   server-args: -m,mcp_server.server
+
+anthropic:
+  # Not read by any code yet — no LLM-based synthesizer is wired up (see
+  # docs/proposal.md Section 5.7/Chapter 15). This just reserves the
+  # property name/shape. Put the real key in application-local.yml
+  # (gitignored) or the ANTHROPIC_API_KEY env var — never as a default
+  # here, this file is tracked by git. Empty means "no key configured."
+  api-key: ${ANTHROPIC_API_KEY:}
+
+openai:
+  # Same rule: real key goes in application-local.yml or OPENAI_API_KEY,
+  # never hardcoded here.
+  api-key: ${OPENAI_API_KEY:}
+  model: ${OPENAI_MODEL:gpt-5-mini}
+
+integrations:
+  jira:
+    # Disabled by default. Put real values in application-local.yml or env vars.
+    enabled: ${JIRA_ENABLED:false}
+    base-url: ${JIRA_BASE_URL:}
+    email: ${JIRA_EMAIL:}
+    api-token: ${JIRA_API_TOKEN:}
+    project-key: ${JIRA_PROJECT_KEY:}
+    issue-type: ${JIRA_ISSUE_TYPE:Task}
+    # basic = classic Jira API token against https://<site>.atlassian.net
+    # scoped = scoped Jira API token against https://api.atlassian.com/ex/jira/{cloud-id}
+    auth-mode: ${JIRA_AUTH_MODE:basic}
+    cloud-id: ${JIRA_CLOUD_ID:}
+  bitbucket:
+    # Bitbucket Cloud PR comment connector, disabled by default.
+    enabled: ${BITBUCKET_ENABLED:false}
+    api-base-url: ${BITBUCKET_API_BASE_URL:https://api.bitbucket.org/2.0}
+    username: ${BITBUCKET_USERNAME:}
+    app-password: ${BITBUCKET_APP_PASSWORD:}

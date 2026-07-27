@@ -53,6 +53,16 @@ public class McpToolClient implements ProjectGraphClient, AutoCloseable {
         return callTool("search_issues", Map.of("query", query));
     }
 
+    @Override
+    public Map<String, Object> traceImpact(String name, int maxHops) {
+        return callTool("trace_impact", Map.of("name", name, "max_hops", maxHops));
+    }
+
+    @Override
+    public Map<String, Object> getTestCoverage(String name) {
+        return callTool("get_test_coverage", Map.of("name", name));
+    }
+
     private Map<String, Object> callTool(String toolName, Map<String, Object> arguments) {
         McpSchema.CallToolResult result;
         try {

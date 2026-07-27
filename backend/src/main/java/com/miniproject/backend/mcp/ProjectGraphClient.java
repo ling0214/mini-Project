@@ -12,4 +12,8 @@ public interface ProjectGraphClient {
     Map<String, Object> getEndpointInfo(String name);
 
     Map<String, Object> searchIssues(String query);
+
+    Map<String, Object> traceImpact(String name, int maxHops);
+
+    Map<String, Object> getTestCoverage(String name);
 }
