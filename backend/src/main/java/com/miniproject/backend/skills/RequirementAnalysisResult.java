@@ -23,3 +23,4 @@ public record RequirementAnalysisResult(
     public record Ambiguity(String note, String evidence) {
     }
 }
+

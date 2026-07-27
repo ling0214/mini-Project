@@ -98,3 +98,4 @@ public class RuleBasedRequirementAnalysisSynthesizer implements RequirementAnaly
         return sentences;
     }
 }
+

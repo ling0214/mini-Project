@@ -11,3 +11,4 @@ public interface RequirementAnalysisSynthesizer {
 
     RequirementAnalysisResult synthesize(String description, List<String> sentences, List<String> candidateAreas);
 }
+
