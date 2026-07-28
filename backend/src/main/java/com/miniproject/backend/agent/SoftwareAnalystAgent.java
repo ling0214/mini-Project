@@ -20,6 +20,7 @@ public class SoftwareAnalystAgent implements Agent {
                 "requirement-analysis",
                 "impact-analysis",
                 "test-case-gen",
+                "test-scope-review",
                 "timeline-estimation",
                 "handoff-summary");
     }

@@ -10,6 +10,7 @@ import com.miniproject.backend.persistence.ArtifactPersistenceService;
 import com.miniproject.backend.skills.HandoffSummaryResult;
 import com.miniproject.backend.skills.ImpactAnalysisResult;
 import com.miniproject.backend.skills.TestCaseGenResult;
+import com.miniproject.backend.skills.TestScopeReviewResult;
 import com.miniproject.backend.skills.TimelineEstimationResult;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -98,6 +99,16 @@ public class ArtifactHistoryController {
             throw new IllegalArgumentException("profile and target are required");
         }
         return coordinator.handoffToTestCaseGen(taskId, request.profile(), request.target());
+    }
+
+    @CrossOrigin(origins = "*")
+    @PostMapping("/{taskId}/test-scope")
+    public Artifact<TestScopeReviewResult> reviewTestScope(
+            @PathVariable String taskId, @RequestBody TestScopeReviewRequest request) {
+        if (request.profile() == null || request.profile().isBlank()) {
+            throw new IllegalArgumentException("profile is required");
+        }
+        return coordinator.reviewTestScope(taskId, request.profile(), request.cases(), request.notes());
     }
 
     @CrossOrigin(origins = "*")

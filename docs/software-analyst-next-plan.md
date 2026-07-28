@@ -137,16 +137,20 @@ This is closer to real analyst work because analysts need to justify their findi
 
 ### 5. Improve Test Case Management
 
-The current platform can generate test scenarios. The next step is to make the testing scope editable and reviewable.
+Status: implemented as the first managed testing-scope slice.
 
-Useful functions:
+The platform can generate test scenarios and then let the analyst manage them as a reviewable testing scope.
+
+Implemented functions:
 
 - accept test case
 - reject test case
 - edit test case
 - add manual test case
 - set priority
-- export testing scope
+- save a linked `test-scope-review` artifact
+- mark testing scope as reviewed
+- use reviewed testing scope in handoff summary
 
 This is useful because Software Analysts often prepare or support UAT and testing scope.
 
@@ -185,8 +189,8 @@ The best next step is:
 1. Finish ticket intake validation and history display
 2. Add repository selection for different target projects
 3. Store previous analyst decisions as reusable memory
-4. Improve test case management
-5. Add export for handoff summary
+4. Improve export for handoff summary
+5. Add external Jira/Bitbucket write-back for reviewed handoff summaries
 
 This order is practical because project context is now connected, so the next value comes from making the context selectable and reusable across tickets.
 

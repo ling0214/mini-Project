@@ -52,8 +52,9 @@ React Workflow UI
 - Requirement-to-impact handoff: reviewed requirement artifacts become the source of truth for impact analysis.
 - `impact-analysis`: identifies affected modules, risk notes, rough effort, missing evidence, confidence, and evidence.
 - `test-case-gen`: generates positive, negative, and edge test scenarios from reviewed impact analysis modules.
+- Test scope management: analysts can accept, reject, edit, prioritize, and review generated cases as a linked `test-scope-review` artifact.
 - `timeline-estimation`: derives delivery estimates from reviewed impact artifacts and linked test artifacts.
-- `handoff-summary`: compiles reviewed requirement, impact, and test artifacts into a persisted handoff summary.
+- `handoff-summary`: compiles reviewed requirement, impact, and managed test scope artifacts into a persisted handoff summary.
 - Artifact history: every skill run is persisted with evidence, review state, and parent-child lineage.
 - React frontend: primary UI is the Software Analyst guided workflow.
 

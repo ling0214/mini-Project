@@ -312,6 +312,7 @@ function AnalystWorkflow() {
   const [impactLoading, setImpactLoading] = useState(false);
   const [impactError, setImpactError] = useState("");
   const [testArtifacts, setTestArtifacts] = useState([]);
+  const [testScopeArtifacts, setTestScopeArtifacts] = useState({});
   const [summaryArtifact, setSummaryArtifact] = useState(null);
   const startedImpactRef = useRef(false);
 
@@ -324,6 +325,7 @@ function AnalystWorkflow() {
     setImpactArtifact(null);
     setImpactError("");
     setTestArtifacts([]);
+    setTestScopeArtifacts({});
     setSummaryArtifact(null);
     startedImpactRef.current = false;
   }
@@ -375,13 +377,32 @@ function AnalystWorkflow() {
     setTestArtifacts((prev) => [...prev.filter((item) => item.result?.target !== moduleName), next]);
   }
 
+  async function saveTestScope(testArtifact, cases, notes) {
+    const next = await api(`/api/artifacts/${testArtifact.task_id}/test-scope`, {
+      method: "POST",
+      body: { profile: ANALYST_PROFILE, cases, notes },
+    });
+    setTestScopeArtifacts((prev) => ({ ...prev, [testArtifact.task_id]: next }));
+    return next;
+  }
+
+  async function reviewTestScope(testArtifact, scopeArtifact) {
+    const next = await api(`/api/artifacts/${scopeArtifact.task_id}/review`, { method: "PATCH" });
+    setTestScopeArtifacts((prev) => ({ ...prev, [testArtifact.task_id]: next }));
+    return next;
+  }
+
   async function generateSummary() {
+    const selectedTestTaskIds = testArtifacts.map((item) => {
+      const managedScope = testScopeArtifacts[item.task_id];
+      return managedScope?.reviewed ? managedScope.task_id : item.task_id;
+    });
     const next = await api(`/api/artifacts/${impactArtifact.task_id}/handoff/handoff-summary`, {
       method: "POST",
       body: {
         profile: ANALYST_PROFILE,
         requirement_task_id: reqArtifact.task_id,
-        test_task_ids: testArtifacts.map((item) => item.task_id),
+        test_task_ids: selectedTestTaskIds,
       },
     });
     setSummaryArtifact(next);
@@ -427,7 +448,10 @@ function AnalystWorkflow() {
           <TestPhase
             impactArtifact={impactArtifact}
             testArtifacts={testArtifacts}
+            testScopeArtifacts={testScopeArtifacts}
             onGenerate={generateTests}
+            onSaveTestScope={saveTestScope}
+            onReviewTestScope={reviewTestScope}
             onBack={() => setPhase("impact")}
             onNext={() => setPhase("report")}
           />
@@ -438,6 +462,7 @@ function AnalystWorkflow() {
             reqArtifact={reqArtifact}
             impactArtifact={impactArtifact}
             testArtifacts={testArtifacts}
+            testScopeArtifacts={testScopeArtifacts}
             summaryArtifact={summaryArtifact}
             onGenerateSummary={generateSummary}
             onReviewSummary={reviewSummary}
@@ -762,15 +787,16 @@ function ImpactPhase({ loading, error, artifact, onRetry, onReview, onBack, onNe
   );
 }
 
-function TestPhase({ impactArtifact, testArtifacts, onGenerate, onBack, onNext }) {
+function TestPhase({ impactArtifact, testArtifacts, testScopeArtifacts, onGenerate, onSaveTestScope, onReviewTestScope, onBack, onNext }) {
   const modules = impactArtifact?.result?.affected_modules || [];
   const [loadingTarget, setLoadingTarget] = useState("");
+  const reviewedScopeCount = testArtifacts.filter((item) => testScopeArtifacts[item.task_id]?.reviewed).length;
   return (
     <section className="screen">
       <HeaderBlock
         eyebrow="Step 3 · Test Scenarios"
-        title="Generate regression coverage for the affected modules"
-        subtitle="Pick any module from the reviewed impact analysis to generate a grounded test plan."
+        title="Prepare the testing scope"
+        subtitle="Generate scenarios from impacted modules, then accept, reject, edit, and prioritize cases before handoff."
       />
       {modules.length === 0 && <SimpleList title="Affected modules" items={["No affected modules resolved in the project graph."]} />}
       {modules.length > 0 && (
@@ -803,6 +829,12 @@ function TestPhase({ impactArtifact, testArtifacts, onGenerate, onBack, onNext }
         <section key={item.task_id} className="list-section">
           <h3>Test plan · {item.result?.target}</h3>
           <TestGenReport result={item.result || {}} />
+          <TestScopeManager
+            testArtifact={item}
+            scopeArtifact={testScopeArtifacts[item.task_id]}
+            onSave={onSaveTestScope}
+            onReview={onReviewTestScope}
+          />
         </section>
       ))}
       <div className="action-row">
@@ -810,17 +842,18 @@ function TestPhase({ impactArtifact, testArtifacts, onGenerate, onBack, onNext }
           Back to impact analysis
         </button>
         <button className="btn primary push" type="button" disabled={testArtifacts.length === 0} onClick={onNext}>
-          Continue to analyst report
+          {reviewedScopeCount > 0 ? "Continue with reviewed test scope" : "Continue with generated tests"}
         </button>
       </div>
     </section>
   );
 }
 
-function ReportPhase({ ticket, reqArtifact, impactArtifact, testArtifacts, summaryArtifact, onGenerateSummary, onReviewSummary, onRestart }) {
+function ReportPhase({ ticket, reqArtifact, impactArtifact, testArtifacts, testScopeArtifacts, summaryArtifact, onGenerateSummary, onReviewSummary, onRestart }) {
   const reqResult = reqArtifact?.result || {};
   const impactResult = impactArtifact?.result || {};
   const ticketText = formatTicketInput(ticket);
+  const reviewedScopeCount = testArtifacts.filter((item) => testScopeArtifacts[item.task_id]?.reviewed).length;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   return (
@@ -840,13 +873,19 @@ function ReportPhase({ ticket, reqArtifact, impactArtifact, testArtifacts, summa
             />
             <Stat label="Risk level" value={<Tag kind="risk" value={impactResult.risk_level} />} />
             <Stat label="Test plans generated" value={testArtifacts.length} />
+            <Stat label="Reviewed test scopes" value={reviewedScopeCount} />
           </div>
           <SimpleList title="Business rules" items={reqResult.business_rules || []} />
           <SimpleList title="Assumptions" items={reqResult.assumptions || []} />
           <EvidenceList title="Affected modules" items={impactResult.affected_modules || []} sourceKey="path" claimKey="reason" />
           <SimpleList
             title="Test scenarios prepared"
-            items={testArtifacts.map((item) => `${item.result?.target}: ${(item.result?.cases || []).length} case(s)`)}
+            items={testArtifacts.map((item) => {
+              const scope = testScopeArtifacts[item.task_id]?.result;
+              return scope
+                ? `${scope.target}: ${scope.accepted_count || 0} accepted, ${scope.backlog_count || 0} backlog`
+                : `${item.result?.target}: ${(item.result?.cases || []).length} generated case(s)`;
+            })}
           />
           {error && <ErrorBox message={error} />}
           <div className="action-row">
@@ -1494,6 +1533,143 @@ function TestGenReport({ result }) {
   );
 }
 
+function TestScopeManager({ testArtifact, scopeArtifact, onSave, onReview }) {
+  const generatedCases = testArtifact.result?.cases || [];
+  const [cases, setCases] = useState(() => buildManagedCases(generatedCases));
+  const [notes, setNotes] = useState("");
+  const [loading, setLoading] = useState("");
+  const [error, setError] = useState("");
+  const result = scopeArtifact?.result || {};
+  const reviewed = Boolean(scopeArtifact?.reviewed);
+
+  function updateCase(index, patch) {
+    setCases((prev) => prev.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)));
+  }
+
+  function addManualCase() {
+    setCases((prev) => [
+      ...prev,
+      {
+        id: `MANUAL-${prev.length + 1}`,
+        type: "manual",
+        input: "",
+        expected: "",
+        rationale: "",
+        evidence: "analyst added",
+        status: "accepted",
+        priority: "medium",
+      },
+    ]);
+  }
+
+  async function saveScope() {
+    setError("");
+    const usefulCases = cases.filter((item) => item.input.trim() || item.expected.trim());
+    if (usefulCases.length === 0) {
+      setError("At least one test case with input or expected result is required.");
+      return;
+    }
+    setLoading("save");
+    try {
+      await onSave(testArtifact, usefulCases, notes);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading("");
+    }
+  }
+
+  async function markReviewed() {
+    if (!scopeArtifact) return;
+    setError("");
+    setLoading("review");
+    try {
+      await onReview(testArtifact, scopeArtifact);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading("");
+    }
+  }
+
+  return (
+    <section className="test-scope-panel">
+      <div className="test-scope-header">
+        <div>
+          <h4>Testing scope review</h4>
+          <p className="muted">Accept the scenarios that should go into QA/UAT scope, reject noise, and keep lower priority items in backlog.</p>
+        </div>
+        {scopeArtifact && (
+          <span className={`status-pill ${reviewed ? "reviewed" : "unreviewed"}`}>
+            {reviewed ? "Scope reviewed" : formatStatus(result.readiness || "READY_FOR_REVIEW")}
+          </span>
+        )}
+      </div>
+      <div className="test-case-editor-list">
+        {cases.map((item, index) => (
+          <div key={`${item.id}-${index}`} className={`test-case-editor ${item.status}`}>
+            <div className="test-case-editor-top">
+              <strong>{item.id}</strong>
+              <select value={item.status} onChange={(event) => updateCase(index, { status: event.target.value })}>
+                <option value="accepted">Accepted</option>
+                <option value="rejected">Rejected</option>
+                <option value="backlog">Backlog</option>
+              </select>
+              <select value={item.priority} onChange={(event) => updateCase(index, { priority: event.target.value })}>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+            <div className="test-case-editor-grid">
+              <label>
+                Input / action
+                <textarea value={item.input} onChange={(event) => updateCase(index, { input: event.target.value })} />
+              </label>
+              <label>
+                Expected result
+                <textarea value={item.expected} onChange={(event) => updateCase(index, { expected: event.target.value })} />
+              </label>
+            </div>
+            <label>
+              Analyst rationale
+              <input type="text" value={item.rationale} onChange={(event) => updateCase(index, { rationale: event.target.value })} />
+            </label>
+            <small>{item.type} · {item.evidence || "no evidence"}</small>
+          </div>
+        ))}
+      </div>
+      <label className="field-label">Testing notes</label>
+      <textarea
+        className="compact-textarea"
+        value={notes}
+        onChange={(event) => setNotes(event.target.value)}
+        placeholder="Example: Prioritize accepted high-risk cases for UAT; keep backlog items for regression hardening."
+      />
+      {scopeArtifact && (
+        <div className="test-scope-summary">
+          <span>{result.accepted_count || 0} accepted</span>
+          <span>{result.rejected_count || 0} rejected</span>
+          <span>{result.backlog_count || 0} backlog</span>
+          <code>{scopeArtifact.task_id}</code>
+        </div>
+      )}
+      {error && <ErrorBox message={error} />}
+      <div className="action-row">
+        <button className="btn ghost compact" type="button" onClick={addManualCase}>
+          Add manual case
+        </button>
+        <button className="btn primary compact" type="button" disabled={Boolean(loading)} onClick={saveScope}>
+          {loading === "save" ? "Saving..." : scopeArtifact ? "Save new scope version" : "Save testing scope"}
+        </button>
+        <button className="btn ghost compact" type="button" disabled={!scopeArtifact || reviewed || Boolean(loading)} onClick={markReviewed}>
+          {reviewed ? "Reviewed" : loading === "review" ? "Reviewing..." : "Mark scope reviewed"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function TimelineReport({ result }) {
   const breakdown = result.breakdown || {};
   return (
@@ -1664,6 +1840,19 @@ function formatStatus(status) {
 
 function statusClass(status) {
   return status === "READY_FOR_REVIEW" ? "reviewed" : "unreviewed";
+}
+
+function buildManagedCases(cases) {
+  return (cases || []).map((item, index) => ({
+    id: item.id || `TC-${index + 1}`,
+    type: item.type || "manual",
+    input: item.input || "",
+    expected: item.expected || "",
+    rationale: item.rationale || "",
+    evidence: item.evidence || "",
+    status: "accepted",
+    priority: item.type === "negative" ? "high" : "medium",
+  }));
 }
 
 const SCOPE_CLUE_STOPWORDS = new Set([

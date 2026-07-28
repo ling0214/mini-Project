@@ -15,6 +15,7 @@ See [../docs/architecture.md](../docs/architecture.md) for the full design.
 | `PATCH /api/artifacts/{taskId}/review` | Mark an artifact as reviewed |
 | `POST /api/artifacts/{taskId}/handoff/impact-analysis` | Run impact analysis from a reviewed requirement artifact |
 | `POST /api/artifacts/{taskId}/handoff/test-case-gen` | Generate tests from a reviewed impact artifact module |
+| `POST /api/artifacts/{taskId}/test-scope` | Save analyst-reviewed testing scope from a generated test-case artifact |
 | `POST /api/artifacts/{taskId}/handoff/timeline-estimation` | Estimate timeline from a reviewed impact artifact |
 | `POST /api/artifacts/{taskId}/handoff/handoff-summary` | Persist a reviewable handoff summary from requirement, impact, and test artifacts |
 | `GET /api/artifacts` | List persisted artifacts |
@@ -48,6 +49,8 @@ Every skill result is wrapped in an `artifact.v1` envelope and persisted immedia
 - parent artifact lineage
 
 Downstream handoffs use reviewed artifacts as their source of truth.
+
+Generated test-case artifacts can be turned into linked `test-scope-review` artifacts. This keeps the AI-generated draft and analyst-reviewed testing scope separate in history, while handoff summary prefers reviewed managed scopes when available.
 
 ## External Write-Back
 

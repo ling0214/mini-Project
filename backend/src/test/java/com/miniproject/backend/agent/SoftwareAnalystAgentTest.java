@@ -15,6 +15,7 @@ class SoftwareAnalystAgentTest {
                 "requirement-analysis",
                 "impact-analysis",
                 "test-case-gen",
+                "test-scope-review",
                 "code-qa",
                 "timeline-estimation",
                 "handoff-summary");
