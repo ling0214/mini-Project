@@ -1,5 +1,6 @@
 package com.miniproject.backend.skills;
 
+import com.miniproject.backend.mcp.ProjectGraphClient;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -10,11 +11,74 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class ProjectContextMatcherTest {
 
     @TempDir
     Path repo;
+
+    @Test
+    void prefersCodebaseMemoryContextWhenAvailable() {
+        ProjectGraphClient graphClient = mock(ProjectGraphClient.class);
+        when(graphClient.searchProjectContext(eq("MyBanjirCare"), anyString(), anyInt()))
+                .thenReturn(Map.of(
+                        "project", "MyBanjirCare",
+                        "source", "codebase-memory",
+                        "matches", List.of(Map.of(
+                                "found", true,
+                                "name", "AidRequestController",
+                                "file", "app/Http/Controllers/AidRequestController.php",
+                                "line", 42,
+                                "reason", "codebase-memory matched class AidRequestController as relevant to this ticket",
+                                "source", "codebase-memory",
+                                "affected", List.of()))));
+
+        ProjectContextMatcher matcher = new ProjectContextMatcher("MyBanjirCare", repo, graphClient);
+
+        List<Map<String, Object>> traces = matcher.findRelevantTraces(
+                "Donor should filter aid request records by city and urgency.");
+
+        assertThat(traces).hasSize(1);
+        assertThat(traces.get(0).get("file")).isEqualTo("app/Http/Controllers/AidRequestController.php");
+        assertThat(traces.get(0).get("source")).isEqualTo("codebase-memory");
+        assertThat(traces.get(0).get("reason")).asString().contains("codebase-memory matched");
+    }
+
+    @Test
+    void combinesCodebaseMemoryAndRepositoryEvidence() throws IOException {
+        write("app/Http/Controllers/AidRequestController.php",
+                "class AidRequestController { function index() { return city urgency category; } }");
+
+        ProjectGraphClient graphClient = mock(ProjectGraphClient.class);
+        when(graphClient.searchProjectContext(eq("MyBanjirCare"), anyString(), anyInt()))
+                .thenReturn(Map.of(
+                        "project", "MyBanjirCare",
+                        "source", "codebase-memory",
+                        "matches", List.of(Map.of(
+                                "found", true,
+                                "name", "aidRequest",
+                                "file", "app/Models/Donation.php",
+                                "line", 81,
+                                "reason", "codebase-memory matched method aidRequest as relevant to this ticket",
+                                "source", "codebase-memory",
+                                "affected", List.of()))));
+
+        ProjectContextMatcher matcher = new ProjectContextMatcher("MyBanjirCare", repo, graphClient);
+
+        List<Map<String, Object>> traces = matcher.findRelevantTraces(
+                "Donor should filter aid request records by city, category, and urgency.");
+
+        assertThat(traces)
+                .extracting(item -> item.get("file"))
+                .contains(
+                        "app/Models/Donation.php",
+                        "app/Http/Controllers/AidRequestController.php");
+    }
 
     @Test
     void retrievesRelevantLaravelFilesFromTargetRepository() throws IOException {

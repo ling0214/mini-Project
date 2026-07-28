@@ -16,4 +16,6 @@ public interface ProjectGraphClient {
     Map<String, Object> traceImpact(String name, int maxHops);
 
     Map<String, Object> getTestCoverage(String name);
+
+    Map<String, Object> searchProjectContext(String project, String query, int limit);
 }

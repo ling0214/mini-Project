@@ -238,3 +238,56 @@ class TestGetTestCoverage:
             cbmm_client, "_call_tool", AsyncMock(return_value=_search_graph_result())
         ):
             assert run(cbmm_client.cbmm_get_test_coverage("does_not_exist")) is None
+
+
+class TestSearchProjectContext:
+    def test_search_graph_results_are_normalized_for_impact_analysis(self):
+        async def fake_call_tool(name, args):
+            assert name == "search_graph"
+            assert args["project"] == "MyBanjirCare"
+            assert args["query"] == "donor aid request city urgency"
+            assert args["limit"] == 8
+            return _search_graph_result(
+                {
+                    "name": "AidRequestController",
+                    "qualified_name": "MyBanjirCare.app.Http.Controllers.AidRequestController",
+                    "label": "Class",
+                    "file_path": "app/Http/Controllers/AidRequestController.php",
+                    "start_line": 12,
+                },
+                {
+                    "name": "IgnoredVendor",
+                    "qualified_name": "vendor.IgnoredVendor",
+                    "label": "Class",
+                    "file_path": "vendor/package/IgnoredVendor.php",
+                    "start_line": 1,
+                },
+                {
+                    "name": "noise",
+                    "qualified_name": "MyBanjirCare.noise",
+                    "label": "Variable",
+                    "file_path": "app/noise.php",
+                    "start_line": 1,
+                },
+            )
+
+        with patch.object(cbmm_client, "_call_tool", AsyncMock(side_effect=fake_call_tool)):
+            result = run(cbmm_client.cbmm_search_project_context(
+                "MyBanjirCare", "donor aid request city urgency", limit=2))
+
+        assert result["source"] == "codebase-memory"
+        assert result["count"] == 1
+        assert result["matches"] == [
+            {
+                "found": True,
+                "name": "AidRequestController",
+                "file": "app/Http/Controllers/AidRequestController.php",
+                "line": 12,
+                "reason": "codebase-memory matched class AidRequestController as relevant to this ticket",
+                "evidence": "app/Http/Controllers/AidRequestController.php:12",
+                "source": "codebase-memory",
+                "label": "Class",
+                "qualified_name": "MyBanjirCare.app.Http.Controllers.AidRequestController",
+                "affected": [],
+            }
+        ]

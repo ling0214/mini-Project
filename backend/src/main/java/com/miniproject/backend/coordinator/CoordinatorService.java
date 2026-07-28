@@ -14,6 +14,7 @@ import com.miniproject.backend.skills.RequirementAnalysisResult;
 import com.miniproject.backend.skills.RequirementAnalysisSkill;
 import com.miniproject.backend.skills.TestCaseGenResult;
 import com.miniproject.backend.skills.TestCaseGenSkill;
+import com.miniproject.backend.skills.TestScopeReviewResult;
 import com.miniproject.backend.skills.TimelineEstimationResult;
 import com.miniproject.backend.skills.TimelineEstimationSynthesizer;
 import org.springframework.stereotype.Service;
@@ -224,6 +225,56 @@ public class CoordinatorService {
         return testCaseGen(profile, target, sourceTaskId);
     }
 
+    public Artifact<TestScopeReviewResult> reviewTestScope(
+            String sourceTaskId,
+            String profile,
+            List<TestScopeReviewResult.ManagedTestCase> cases,
+            String notes) {
+        requireSkillAllowed(profile, "test-scope-review");
+
+        Artifact<Object> source = persistence.findArtifact(sourceTaskId)
+                .orElseThrow(() -> new IllegalArgumentException("No artifact found for task_id " + sourceTaskId));
+        if (!"test-case-gen".equals(source.skill())) {
+            throw new IllegalArgumentException(
+                    "Test scope review requires a test-case-gen source artifact, got: " + source.skill());
+        }
+        if (cases == null || cases.isEmpty()) {
+            throw new IllegalArgumentException("At least one test case is required");
+        }
+
+        Map<String, Object> sourceResult = resultMap(source, "test-case-gen");
+        List<TestScopeReviewResult.ManagedTestCase> normalizedCases = cases.stream()
+                .map(CoordinatorService::normalizeManagedCase)
+                .toList();
+        int acceptedCount = countStatus(normalizedCases, "accepted");
+        int rejectedCount = countStatus(normalizedCases, "rejected");
+        int backlogCount = countStatus(normalizedCases, "backlog");
+        String readiness = acceptedCount > 0 ? "READY_FOR_REVIEW" : "NEEDS_TEST_CASES";
+
+        List<Evidence> evidence = normalizedCases.stream()
+                .filter(testCase -> !"rejected".equals(testCase.status()))
+                .map(testCase -> new Evidence(
+                        testCase.status() + " test case " + testCase.id() + ": " + testCase.expected(),
+                        testCase.evidence() == null || testCase.evidence().isBlank() ? "analyst test scope" : testCase.evidence()))
+                .toList();
+
+        TestScopeReviewResult result = new TestScopeReviewResult(
+                stringValue(sourceResult.get("target"), "(unknown target)"),
+                normalizedCases,
+                acceptedCount,
+                rejectedCount,
+                backlogCount,
+                stringList(sourceResult, "regression_checklist"),
+                notes == null ? "" : notes.trim(),
+                readiness,
+                evidence);
+
+        Artifact<TestScopeReviewResult> artifact =
+                Artifact.draft(profile + "-agent", "test-scope-review", result, result.evidence());
+        persistence.save(artifact, profile, "Reviewed test scope for " + sourceTaskId, sourceTaskId);
+        return artifact;
+    }
+
     /**
      * Deterministic handoff, Phase 5: a Project Analyst turning a reviewed
      * impact-analysis artifact into a rule-based timeline estimate. If a
@@ -336,6 +387,7 @@ public class CoordinatorService {
         if (testTaskIds == null || testTaskIds.isEmpty()) {
             tests = persistence.findChildren(impactTaskId).stream()
                     .filter(child -> "test-case-gen".equals(child.skill()))
+                    .map(this::preferredTestScopeArtifact)
                     .toList();
         } else {
             tests = testTaskIds.stream()
@@ -346,12 +398,20 @@ public class CoordinatorService {
         }
 
         for (Artifact<Object> test : tests) {
-            if (!"test-case-gen".equals(test.skill())) {
+            if (!"test-case-gen".equals(test.skill()) && !"test-scope-review".equals(test.skill())) {
                 throw new IllegalArgumentException(
-                        "Handoff summary test artifacts must be test-case-gen, got: " + test.skill());
+                        "Handoff summary test artifacts must be test-case-gen or test-scope-review, got: " + test.skill());
             }
         }
         return tests;
+    }
+
+    private Artifact<Object> preferredTestScopeArtifact(Artifact<Object> testCaseArtifact) {
+        return persistence.findChildren(testCaseArtifact.taskId()).stream()
+                .filter(child -> "test-scope-review".equals(child.skill()))
+                .filter(Artifact::reviewed)
+                .reduce((previous, current) -> current)
+                .orElse(testCaseArtifact);
     }
 
     @SuppressWarnings("unchecked")
@@ -432,11 +492,63 @@ public class CoordinatorService {
                 .map(test -> {
                     Map<String, Object> result = resultMap(test, "test-case-gen");
                     List<String> checklist = stringList(result, "regression_checklist");
-                    int caseCount = result.get("cases") instanceof List<?> cases ? cases.size() : 0;
+                    int caseCount;
+                    if ("test-scope-review".equals(test.skill())) {
+                        caseCount = numberValue(result.get("accepted_count"), 0);
+                    } else {
+                        caseCount = result.get("cases") instanceof List<?> cases ? cases.size() : 0;
+                    }
                     return new HandoffSummaryResult.TestPlanSummary(
                             stringValue(result.get("target"), "(unknown target)"), caseCount, checklist);
                 })
                 .toList();
+    }
+
+    private static TestScopeReviewResult.ManagedTestCase normalizeManagedCase(
+            TestScopeReviewResult.ManagedTestCase testCase) {
+        return new TestScopeReviewResult.ManagedTestCase(
+                stringValue(testCase.id(), "TC"),
+                stringValue(testCase.type(), "manual").toLowerCase(),
+                stringValue(testCase.input(), ""),
+                stringValue(testCase.expected(), ""),
+                stringValue(testCase.rationale(), ""),
+                stringValue(testCase.evidence(), ""),
+                normalizeStatus(testCase.status()),
+                normalizePriority(testCase.priority()));
+    }
+
+    private static String normalizeStatus(String status) {
+        String normalized = status == null ? "" : status.trim().toLowerCase();
+        return switch (normalized) {
+            case "accepted", "rejected", "backlog" -> normalized;
+            default -> "accepted";
+        };
+    }
+
+    private static String normalizePriority(String priority) {
+        String normalized = priority == null ? "" : priority.trim().toLowerCase();
+        return switch (normalized) {
+            case "high", "medium", "low" -> normalized;
+            default -> "medium";
+        };
+    }
+
+    private static int countStatus(List<TestScopeReviewResult.ManagedTestCase> cases, String status) {
+        return (int) cases.stream().filter(testCase -> status.equals(testCase.status())).count();
+    }
+
+    private static int numberValue(Object value, int fallback) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value != null) {
+            try {
+                return Integer.parseInt(String.valueOf(value));
+            } catch (NumberFormatException ignored) {
+                return fallback;
+            }
+        }
+        return fallback;
     }
 
     private static List<Evidence> combinedEvidence(

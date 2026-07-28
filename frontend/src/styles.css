@@ -1066,6 +1066,123 @@ textarea {
   color: var(--ink-soft);
 }
 
+.test-scope-panel {
+  margin-top: 1rem;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+  background: var(--paper);
+  padding: 1rem;
+}
+
+.test-scope-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.test-scope-header h4 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+
+.test-case-editor-list {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.test-case-editor {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper-raised);
+  padding: 0.85rem;
+}
+
+.test-case-editor.rejected {
+  opacity: 0.72;
+}
+
+.test-case-editor.backlog {
+  border-left: 3px solid var(--warn);
+}
+
+.test-case-editor.accepted {
+  border-left: 3px solid var(--accent);
+}
+
+.test-case-editor-top,
+.test-case-editor-grid,
+.test-scope-summary {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.test-case-editor-top {
+  grid-template-columns: 1fr 140px 120px;
+  align-items: center;
+}
+
+.test-case-editor-grid {
+  grid-template-columns: 1fr 1fr;
+  margin-top: 0.75rem;
+}
+
+.test-case-editor label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.test-case-editor textarea,
+.test-case-editor input,
+.test-case-editor select,
+.compact-textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  padding: 0.65rem 0.75rem;
+}
+
+.test-case-editor textarea {
+  min-height: 78px;
+  resize: vertical;
+}
+
+.compact-textarea {
+  min-height: 84px;
+  resize: vertical;
+  margin-top: 0.35rem;
+}
+
+.test-case-editor small {
+  display: block;
+  margin-top: 0.55rem;
+  color: var(--ink-faint);
+}
+
+.test-scope-summary {
+  grid-template-columns: repeat(4, max-content);
+  align-items: center;
+  margin-top: 0.85rem;
+  color: var(--ink-soft);
+}
+
+.test-scope-summary span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.35rem 0.6rem;
+  background: var(--paper-raised);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
 /* ---------- Responsive ---------- */
 
 @media (max-width: 900px) {
@@ -1114,7 +1231,10 @@ textarea {
   .stat-grid,
   .handoff-grid,
   .ticket-meta-grid,
-  .project-context-panel {
+  .project-context-panel,
+  .test-case-editor-grid,
+  .test-case-editor-top,
+  .test-scope-summary {
     grid-template-columns: 1fr;
   }
 

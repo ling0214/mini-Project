@@ -36,6 +36,16 @@ CBMM_EXECUTABLE = os.environ.get(
 )
 CBMM_PROJECT = os.environ.get("CBMM_PROJECT", "C-Users-lingn-mini-Project")
 
+CODE_CONTEXT_LABELS = {"Route", "Class", "Method", "Function", "File", "Module"}
+SKIPPED_CONTEXT_PATH_PARTS = (
+    "/.git/",
+    "/vendor/",
+    "/node_modules/",
+    "/storage/framework/",
+    "/storage/logs/",
+    "/bootstrap/cache/",
+)
+
 
 async def _call_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
     """Run one codebase-memory-mcp tool via its `cli` subcommand and return its parsed JSON result.
@@ -264,3 +274,66 @@ async def cbmm_get_test_coverage(name: str) -> Optional[Dict[str, Any]]:
             f"showing {qn}"
         )
     return out
+
+
+async def cbmm_search_project_context(project: str, query: str, limit: int = 12) -> Dict[str, Any]:
+    """Retrieve likely affected code context from a selected codebase-memory project.
+
+    This is the first RAG/Memory retrieval path used by the Software Analyst
+    workflow: search_graph ranks code graph nodes for the ticket text, then we
+    normalize the results into the same trace-like shape ImpactAnalysisSkill
+    already understands.
+    """
+    safe_limit = max(1, min(int(limit or 12), 30))
+    result = await _call_tool(
+        "search_graph",
+        {"project": project, "query": query, "limit": safe_limit * 4},
+    )
+
+    matches: List[Dict[str, Any]] = []
+    seen = set()
+    for item in result.get("results") or []:
+        label = item.get("label")
+        file_path = item.get("file_path")
+        if label not in CODE_CONTEXT_LABELS or not file_path:
+            continue
+        normalized_path = "/" + str(file_path).replace("\\", "/")
+        if any(part in normalized_path for part in SKIPPED_CONTEXT_PATH_PARTS):
+            continue
+
+        name = item.get("name") or Path(file_path).stem
+        line = item.get("start_line") or 1
+        key = (file_path, name)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        qualified_name = item.get("qualified_name") or name
+        reason = (
+            f"codebase-memory matched {str(label).lower()} {name} "
+            f"as relevant to this ticket"
+        )
+        matches.append(
+            {
+                "found": True,
+                "name": name,
+                "file": file_path,
+                "line": line,
+                "reason": reason,
+                "evidence": f"{file_path}:{line}",
+                "source": "codebase-memory",
+                "label": label,
+                "qualified_name": qualified_name,
+                "affected": [],
+            }
+        )
+        if len(matches) >= safe_limit:
+            break
+
+    return {
+        "project": project,
+        "query": query,
+        "matches": matches,
+        "count": len(matches),
+        "source": "codebase-memory",
+    }

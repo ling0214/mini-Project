@@ -1,6 +1,8 @@
 package com.miniproject.backend.skills;
 
 import com.miniproject.backend.mcp.ProjectGraphClient;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
@@ -20,17 +22,30 @@ public class TestCaseGenSkill {
 
     private final ProjectGraphClient graphClient;
     private final TestCaseGenSynthesizer synthesizer;
+    private final String targetProjectName;
 
-    public TestCaseGenSkill(ProjectGraphClient graphClient, TestCaseGenSynthesizer synthesizer) {
+    @Autowired
+    public TestCaseGenSkill(
+            ProjectGraphClient graphClient,
+            TestCaseGenSynthesizer synthesizer,
+            @Value("${analysis.target-project.name:MyBanjirCare}") String targetProjectName) {
         this.graphClient = graphClient;
         this.synthesizer = synthesizer;
+        this.targetProjectName = targetProjectName;
+    }
+
+    TestCaseGenSkill(ProjectGraphClient graphClient, TestCaseGenSynthesizer synthesizer) {
+        this(graphClient, synthesizer, "MyBanjirCare");
     }
 
     @SuppressWarnings("unchecked")
     public TestCaseGenResult run(String target) {
         Map<String, Object> targetInfo = graphClient.getEndpointInfo(target);
         if (!Boolean.TRUE.equals(targetInfo.get("found"))) {
-            return synthesizer.synthesize(target, targetInfo, Map.of(), Map.of(), Map.of());
+            targetInfo = targetInfoFromProjectContext(target);
+            if (!Boolean.TRUE.equals(targetInfo.get("found"))) {
+                return synthesizer.synthesize(target, targetInfo, Map.of(), Map.of(), Map.of());
+            }
         }
 
         Map<String, Map<String, Object>> relatedInfo = new LinkedHashMap<>();
@@ -47,5 +62,26 @@ public class TestCaseGenSkill {
         Map<String, Object> issueSearch = graphClient.searchIssues(target);
 
         return synthesizer.synthesize(target, targetInfo, relatedInfo, coverage, issueSearch);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> targetInfoFromProjectContext(String target) {
+        try {
+            Map<String, Object> context = graphClient.searchProjectContext(targetProjectName, target, 1);
+            Object matches = context.get("matches");
+            if (matches instanceof List<?> list && !list.isEmpty() && list.get(0) instanceof Map<?, ?> first) {
+                Map<String, Object> match = (Map<String, Object>) first;
+                return Map.of(
+                        "found", true,
+                        "name", String.valueOf(match.getOrDefault("name", target)),
+                        "file", String.valueOf(match.getOrDefault("file", targetProjectName)),
+                        "line", match.getOrDefault("line", 1),
+                        "calls", List.of(),
+                        "called_by", List.of());
+            }
+        } catch (RuntimeException ignored) {
+            return Map.of("found", false, "name", target);
+        }
+        return Map.of("found", false, "name", target);
     }
 }

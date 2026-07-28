@@ -84,6 +84,17 @@ async def get_test_coverage(name: str) -> dict:
     return {"found": True, **result}
 
 
+@mcp.tool()
+async def search_project_context(project: str, query: str, limit: int = 12) -> dict:
+    """Search a selected codebase-memory project for code context relevant to a ticket.
+
+    Used by the Software Analyst workflow before local keyword fallback. The
+    result is already shaped like trace entries so the backend can feed it into
+    impact analysis without a second translation layer.
+    """
+    return await cbmm_client.cbmm_search_project_context(project, query, limit)
+
+
 def main() -> None:
     mcp.run()
 

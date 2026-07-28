@@ -103,8 +103,10 @@ Current demo target:
 - Project: MyBanjirCare
 - Framework: Laravel 10 / PHP 8.1
 - Main areas: Aid Request, Donation, Flood Report, Collection Center, Auth / OTP
-- Current implementation: local keyword retrieval over the configured MyBanjirCare repository files
-- Next implementation: replace keyword retrieval with vector RAG/codebase-memory retrieval from the selected repository
+- Current implementation: hybrid project-context retrieval
+  - first asks codebase-memory for relevant MyBanjirCare methods/classes/files
+  - then supplements with local repository controller/model/view evidence
+- Next implementation: add repository selection and store previous analyst decisions as reusable memory
 
 ### 3. Add RAG / Memory For Project Knowledge
 
@@ -135,16 +137,20 @@ This is closer to real analyst work because analysts need to justify their findi
 
 ### 5. Improve Test Case Management
 
-The current platform can generate test scenarios. The next step is to make the testing scope editable and reviewable.
+Status: implemented as the first managed testing-scope slice.
 
-Useful functions:
+The platform can generate test scenarios and then let the analyst manage them as a reviewable testing scope.
+
+Implemented functions:
 
 - accept test case
 - reject test case
 - edit test case
 - add manual test case
 - set priority
-- export testing scope
+- save a linked `test-scope-review` artifact
+- mark testing scope as reviewed
+- use reviewed testing scope in handoff summary
 
 This is useful because Software Analysts often prepare or support UAT and testing scope.
 
@@ -181,12 +187,12 @@ This helps the analyst share the final result with developer, tester, or supervi
 The best next step is:
 
 1. Finish ticket intake validation and history display
-2. Replace keyword file retrieval with RAG / Memory retrieval
-3. Make impact analysis evidence-based from retrieved code/docs
-4. Improve test case management
-5. Add export for handoff summary
+2. Add repository selection for different target projects
+3. Store previous analyst decisions as reusable memory
+4. Improve export for handoff summary
+5. Add external Jira/Bitbucket write-back for reviewed handoff summaries
 
-This order is practical because project context is the key feature that makes the platform different from a normal chatbot.
+This order is practical because project context is now connected, so the next value comes from making the context selectable and reusable across tickets.
 
 ## Demo Direction
 
