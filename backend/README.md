@@ -56,6 +56,8 @@ Generated test-case artifacts can be turned into linked `test-scope-review` arti
 
 Jira and Bitbucket handoff support remains behind `POST /api/artifacts/{taskId}/external-handoff` and `GET /api/artifacts/{taskId}/external-handoffs`. Calls are dry-run by default unless `dry_run: false` is explicitly sent and credentials are configured locally.
 
+The primary Software Analyst workflow now exposes this after a handoff summary is reviewed, so the analyst can create a Jira follow-up or Bitbucket PR comment from the final reviewed summary instead of only viewing it in the app.
+
 ## Prerequisites
 
 `mcp-server`'s virtualenv must exist first. See [../mcp-server/README.md](../mcp-server/README.md).

@@ -55,6 +55,7 @@ React Workflow UI
 - Test scope management: analysts can accept, reject, edit, prioritize, and review generated cases as a linked `test-scope-review` artifact.
 - `timeline-estimation`: derives delivery estimates from reviewed impact artifacts and linked test artifacts.
 - `handoff-summary`: compiles reviewed requirement, impact, and managed test scope artifacts into a persisted handoff summary.
+- Summary external handoff: reviewed handoff summaries can be sent to Jira or Bitbucket through the controlled external handoff flow.
 - Artifact history: every skill run is persisted with evidence, review state, and parent-child lineage.
 - React frontend: primary UI is the Software Analyst guided workflow.
 

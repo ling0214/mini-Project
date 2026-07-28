@@ -171,10 +171,13 @@ This makes the platform more realistic because Software Analysts often need to c
 
 ### 7. Export Analyst Handoff
 
-Even if the platform already shows a handoff summary, real work usually still needs a document or shareable output.
+Status: partially implemented.
+
+Reviewed handoff summaries can now be sent through the existing Jira / Bitbucket external handoff flow. Real work may still need a document or shareable export format.
 
 Useful export options:
 
+- Jira follow-up issue or Bitbucket PR comment
 - Markdown report
 - PDF report
 - copyable developer handoff

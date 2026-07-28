@@ -314,6 +314,7 @@ function AnalystWorkflow() {
   const [testArtifacts, setTestArtifacts] = useState([]);
   const [testScopeArtifacts, setTestScopeArtifacts] = useState({});
   const [summaryArtifact, setSummaryArtifact] = useState(null);
+  const [summaryHandoffs, setSummaryHandoffs] = useState([]);
   const startedImpactRef = useRef(false);
 
   const reqStatus = reqArtifact ? getRequirementStatus(reqArtifact) : null;
@@ -327,6 +328,7 @@ function AnalystWorkflow() {
     setTestArtifacts([]);
     setTestScopeArtifacts({});
     setSummaryArtifact(null);
+    setSummaryHandoffs([]);
     startedImpactRef.current = false;
   }
 
@@ -406,11 +408,26 @@ function AnalystWorkflow() {
       },
     });
     setSummaryArtifact(next);
+    setSummaryHandoffs([]);
   }
 
   async function reviewSummary() {
     const next = await api(`/api/artifacts/${summaryArtifact.task_id}/review`, { method: "PATCH" });
     setSummaryArtifact(next);
+    await loadSummaryHandoffs(next.task_id);
+  }
+
+  async function loadSummaryHandoffs(taskId = summaryArtifact?.task_id) {
+    if (!taskId) {
+      setSummaryHandoffs([]);
+      return;
+    }
+    try {
+      const items = await api(`/api/artifacts/${taskId}/external-handoffs`);
+      setSummaryHandoffs(items);
+    } catch {
+      setSummaryHandoffs([]);
+    }
   }
 
   return (
@@ -464,8 +481,10 @@ function AnalystWorkflow() {
             testArtifacts={testArtifacts}
             testScopeArtifacts={testScopeArtifacts}
             summaryArtifact={summaryArtifact}
+            summaryHandoffs={summaryHandoffs}
             onGenerateSummary={generateSummary}
             onReviewSummary={reviewSummary}
+            onReloadSummaryHandoffs={loadSummaryHandoffs}
             onRestart={reset}
           />
         )}
@@ -849,7 +868,19 @@ function TestPhase({ impactArtifact, testArtifacts, testScopeArtifacts, onGenera
   );
 }
 
-function ReportPhase({ ticket, reqArtifact, impactArtifact, testArtifacts, testScopeArtifacts, summaryArtifact, onGenerateSummary, onReviewSummary, onRestart }) {
+function ReportPhase({
+  ticket,
+  reqArtifact,
+  impactArtifact,
+  testArtifacts,
+  testScopeArtifacts,
+  summaryArtifact,
+  summaryHandoffs,
+  onGenerateSummary,
+  onReviewSummary,
+  onReloadSummaryHandoffs,
+  onRestart,
+}) {
   const reqResult = reqArtifact?.result || {};
   const impactResult = impactArtifact?.result || {};
   const ticketText = formatTicketInput(ticket);
@@ -931,6 +962,19 @@ function ReportPhase({ ticket, reqArtifact, impactArtifact, testArtifacts, testS
             </div>
           </div>
           <HandoffSummaryReport result={summaryArtifact.result || {}} />
+          {summaryArtifact.reviewed ? (
+            <ExternalHandoff
+              artifact={summaryArtifact}
+              handoffs={summaryHandoffs}
+              onReload={() => onReloadSummaryHandoffs(summaryArtifact.task_id)}
+              initialSummary="Reviewed analyst handoff summary"
+            />
+          ) : (
+            <section className="handoff-panel">
+              <h3>External handoff</h3>
+              <p className="muted">Mark the handoff summary as reviewed before creating a Jira issue or posting to a PR.</p>
+            </section>
+          )}
           <details className="raw">
             <summary>View raw handoff-summary artifact</summary>
             <pre>{JSON.stringify(summaryArtifact, null, 2)}</pre>
@@ -1406,8 +1450,8 @@ function TimelineHandoff({ artifact, onArtifact }) {
   );
 }
 
-function ExternalHandoff({ artifact, handoffs, onReload }) {
-  const [summary, setSummary] = useState("Reviewed impact analysis");
+function ExternalHandoff({ artifact, handoffs, onReload, initialSummary = "Reviewed impact analysis" }) {
+  const [summary, setSummary] = useState(initialSummary);
   const [prUrl, setPrUrl] = useState("");
   const [dryRun, setDryRun] = useState(true);
   const [loading, setLoading] = useState("");
