@@ -42,8 +42,8 @@ React Workflow UI
 
 ## Implemented
 
-- `requirement-analysis`: extracts business rules, ambiguities, missing information, assumptions, scope clues, confidence, and evidence.
-- Optional LLM-backed requirement analysis: the same skill boundary can use OpenAI Responses API when enabled, while the default remains rule-based for repeatable demos.
+- `requirement-analysis`: extracts business rules, ambiguities, missing information, assumptions, analyst concerns, scope clues, confidence, and evidence.
+- Optional LLM-backed requirement analysis: the same skill boundary can use OpenAI Responses API when enabled, while the default remains rule-based for repeatable demos. The LLM prompt now asks for privacy, security, role access, performance, compliance, and testing concerns.
 - Manual/sample ticket intake: captures ticket key, title, priority, reporter, description, acceptance criteria, and comments before analysis.
 - Jira-like dry-run import: imports a sample Jira ticket into Ticket Intake without external writes or credentials.
 - MyBanjirCare sample project context: grounds ticket impact analysis in a Laravel/PHP FYP project domain.

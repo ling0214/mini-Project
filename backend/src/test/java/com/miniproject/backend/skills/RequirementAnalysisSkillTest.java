@@ -44,6 +44,18 @@ class RequirementAnalysisSkillTest {
     }
 
     @Test
+    void myBanjirCareDonorTicketFlagsAnalystConcerns() {
+        RequirementAnalysisResult result = skill.run(
+                "Donor should be able to filter approved aid request records by city, category, and urgency before responding to help.");
+
+        assertThat(result.analystConcerns())
+                .extracting("category")
+                .contains("privacy", "role_access", "performance", "testing");
+        assertThat(result.analystConcerns())
+                .allMatch(concern -> !concern.question().isBlank());
+    }
+
+    @Test
     void ticketMetadataLabelsAreNotCandidateAreas() {
         RequirementAnalysisResult result = skill.run("""
                 Ticket key: MBC-204

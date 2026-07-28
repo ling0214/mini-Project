@@ -21,6 +21,15 @@ class LlmRequirementAnalysisSynthesizerTest {
                   "ambiguities": [{"note": "Category behavior is unclear", "evidence": "filter by city and urgency"}],
                   "missing_information": ["Should filters persist after page reload?"],
                   "assumptions": ["Filtering applies only to approved requests."],
+                  "analyst_concerns": [
+                    {
+                      "category": "privacy",
+                      "severity": "medium",
+                      "note": "City and aid request records may expose location-related victim data.",
+                      "evidence": "filter approved aid request records by city",
+                      "question": "Should donor users see exact city-level request data?"
+                    }
+                  ],
                   "potential_affected_areas": ["Aid Request Listing", "Donation Flow"],
                   "confidence": "high"
                 }
@@ -38,6 +47,12 @@ class LlmRequirementAnalysisSynthesizerTest {
         assertThat(result.businessRules()).containsExactly("Donors can filter approved aid requests by city and urgency.");
         assertThat(result.missingInformation()).containsExactly("Should filters persist after page reload?");
         assertThat(result.potentialAffectedAreas()).containsExactly("Aid Request Listing", "Donation Flow");
+        assertThat(result.analystConcerns())
+                .extracting("category")
+                .containsExactly("privacy");
+        assertThat(result.analystConcerns())
+                .extracting("severity")
+                .containsExactly("medium");
         assertThat(result.evidence()).extracting("source").containsExactly("AI requirement analysis");
     }
 

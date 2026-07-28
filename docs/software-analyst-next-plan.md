@@ -41,9 +41,26 @@ Recent progress:
 - Requirement analysis now has a clean AI provider boundary.
 - The platform can keep rule-based analysis for stable demos.
 - The same requirement-analysis skill can be switched to an OpenAI-backed implementation through environment variables.
+- Requirement analysis now also surfaces analyst concerns such as privacy, role access, performance, compliance, and testing questions.
 - This supports the original idea: the platform coordinates AI skills in the analyst workflow, instead of recreating Claude Skills as a standalone feature.
 
 ## Proposed Next Implementation
+
+### 0. Improve Requirement Analysis Depth
+
+Status: started.
+
+The requirement-analysis skill now separates normal requirement summary from analyst concerns.
+
+It can surface:
+
+- privacy or sensitive-data concern
+- security or role-access concern
+- performance or availability concern
+- compliance, audit, or traceability concern
+- testing concern for QA/UAT scope
+
+This is important because real Software Analysts do not only summarise a ticket. They also identify the questions and risk areas that need to be clarified before development and testing continue.
 
 ### 1. Improve Ticket Intake
 

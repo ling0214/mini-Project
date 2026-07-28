@@ -1294,6 +1294,7 @@ function RequirementAnalysisReport({ artifact, result, onArtifact }) {
   const status = getRequirementStatus(artifact);
   const ambiguities = result.ambiguities || [];
   const scopeClues = cleanScopeClues(result.potential_affected_areas || []);
+  const analystConcerns = result.analyst_concerns || [];
   return (
     <>
       <div className="stat-grid">
@@ -1304,6 +1305,7 @@ function RequirementAnalysisReport({ artifact, result, onArtifact }) {
       <SimpleList title="Business rules" items={result.business_rules || []} />
       <SimpleList title="Missing information" items={result.missing_information || []} tone={status === "NEEDS_CLARIFICATION" ? "danger" : undefined} />
       <SimpleList title="Assumptions" items={result.assumptions || []} />
+      <AnalystConcerns items={analystConcerns} />
       <ScopeClues items={scopeClues} />
       {ambiguities.length > 0 && (
         <section className="list-section">
@@ -1321,6 +1323,31 @@ function RequirementAnalysisReport({ artifact, result, onArtifact }) {
       <EvidenceList title="Evidence" items={result.evidence || []} sourceKey="source" claimKey="claim" />
       {status === "NEEDS_CLARIFICATION" && <ClarificationPanel artifact={artifact} onArtifact={onArtifact} />}
     </>
+  );
+}
+
+function AnalystConcerns({ items }) {
+  if (!items.length) return null;
+  return (
+    <section className="list-section analyst-concerns-section">
+      <h3>Analyst concerns</h3>
+      <div className="analyst-concern-grid">
+        {items.map((item, index) => {
+          const severity = item.severity || "low";
+          return (
+            <article key={`${item.category}-${index}`} className={`analyst-concern-card ${severity}`}>
+              <div className="analyst-concern-top">
+                <span className="concern-category">{formatScopeClue(item.category || "concern")}</span>
+                <span className={`tag ${severity === "high" ? "bad" : severity === "medium" ? "warn" : "good"}`}>{severity}</span>
+              </div>
+              <p>{item.note}</p>
+              {item.question && <strong>{item.question}</strong>}
+              {item.evidence && <small>Evidence: {item.evidence}</small>}
+            </article>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 

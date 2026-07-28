@@ -30,7 +30,7 @@ Legacy direct skill endpoints still exist for free-form use:
 
 Jira import is currently a dry-run sample importer. It does not call Jira yet; real Jira read-only import is the next integration phase.
 
-Requirement analysis is rule-based by default for stable local demos. The same `RequirementAnalysisSynthesizer` boundary can be switched to an LLM-backed implementation without changing the controller, coordinator, artifact model, or frontend workflow.
+Requirement analysis is rule-based by default for stable local demos. The same `RequirementAnalysisSynthesizer` boundary can be switched to an LLM-backed implementation without changing the controller, coordinator, artifact model, or frontend workflow. Both paths now expose analyst concerns so requirement intake can flag privacy, role access, performance, and testing questions before impact analysis.
 
 ## Agent Layer
 
