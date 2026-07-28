@@ -98,6 +98,12 @@ $env:ANALYSIS_TARGET_PROJECT_PATH="C:\tmp\MyBanjirCare"
 
 Change those values to point impact analysis at another local repository.
 
+Impact analysis uses a hybrid context strategy:
+
+1. Query `codebase-memory-mcp` through the local Python MCP server for the configured project.
+2. Supplement those matches with local repository file evidence.
+3. Fall back to fixed demo context only if neither source returns useful evidence.
+
 Optional LLM-backed requirement analysis:
 
 ```powershell

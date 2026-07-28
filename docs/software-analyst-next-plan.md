@@ -103,8 +103,10 @@ Current demo target:
 - Project: MyBanjirCare
 - Framework: Laravel 10 / PHP 8.1
 - Main areas: Aid Request, Donation, Flood Report, Collection Center, Auth / OTP
-- Current implementation: local keyword retrieval over the configured MyBanjirCare repository files
-- Next implementation: replace keyword retrieval with vector RAG/codebase-memory retrieval from the selected repository
+- Current implementation: hybrid project-context retrieval
+  - first asks codebase-memory for relevant MyBanjirCare methods/classes/files
+  - then supplements with local repository controller/model/view evidence
+- Next implementation: add repository selection and store previous analyst decisions as reusable memory
 
 ### 3. Add RAG / Memory For Project Knowledge
 
@@ -181,12 +183,12 @@ This helps the analyst share the final result with developer, tester, or supervi
 The best next step is:
 
 1. Finish ticket intake validation and history display
-2. Replace keyword file retrieval with RAG / Memory retrieval
-3. Make impact analysis evidence-based from retrieved code/docs
+2. Add repository selection for different target projects
+3. Store previous analyst decisions as reusable memory
 4. Improve test case management
 5. Add export for handoff summary
 
-This order is practical because project context is the key feature that makes the platform different from a normal chatbot.
+This order is practical because project context is now connected, so the next value comes from making the context selectable and reusable across tickets.
 
 ## Demo Direction
 

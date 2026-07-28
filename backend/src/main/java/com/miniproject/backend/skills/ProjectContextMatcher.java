@@ -3,6 +3,7 @@ package com.miniproject.backend.skills;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import com.miniproject.backend.mcp.ProjectGraphClient;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -10,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -34,6 +36,7 @@ public class ProjectContextMatcher {
     private static final Pattern WORD = Pattern.compile("[a-zA-Z][a-zA-Z0-9_\\-]{2,}");
     private static final int MAX_FILE_BYTES = 220_000;
     private static final int MAX_MATCHES = 12;
+    private static final int MAX_MEMORY_MATCHES = 6;
     private static final Set<String> STOPWORDS = Set.of(
             "ticket", "key", "title", "priority", "high", "medium", "low", "critical", "reporter",
             "mbc", "fyp", "supervisor", "owner", "product",
@@ -49,18 +52,24 @@ public class ProjectContextMatcher {
 
     private final String targetProjectName;
     private final Path targetProjectPath;
+    private final ProjectGraphClient graphClient;
 
     @Autowired
     public ProjectContextMatcher(
             @Value("${analysis.target-project.name:MyBanjirCare}") String targetProjectName,
-            @Value("${analysis.target-project.path:C:/tmp/MyBanjirCare}") String targetProjectPath) {
-        this.targetProjectName = targetProjectName;
-        this.targetProjectPath = Path.of(targetProjectPath);
+            @Value("${analysis.target-project.path:C:/tmp/MyBanjirCare}") String targetProjectPath,
+            ProjectGraphClient graphClient) {
+        this(targetProjectName, Path.of(targetProjectPath), graphClient);
     }
 
     ProjectContextMatcher(String targetProjectName, Path targetProjectPath) {
+        this(targetProjectName, targetProjectPath, null);
+    }
+
+    ProjectContextMatcher(String targetProjectName, Path targetProjectPath, ProjectGraphClient graphClient) {
         this.targetProjectName = targetProjectName;
         this.targetProjectPath = targetProjectPath;
+        this.graphClient = graphClient;
     }
 
     public List<Map<String, Object>> findRelevantTraces(String changeRequest) {
@@ -69,14 +78,60 @@ public class ProjectContextMatcher {
             return List.of();
         }
 
+        List<Map<String, Object>> memoryMatches = retrieveFromCodebaseMemory(changeRequest);
+
+        List<Map<String, Object>> repositoryMatches = List.of();
         if (Files.isDirectory(targetProjectPath)) {
-            List<Map<String, Object>> retrieved = retrieveFromRepository(terms);
-            if (!retrieved.isEmpty()) {
-                return retrieved;
-            }
+            repositoryMatches = retrieveFromRepository(terms);
+        }
+
+        List<Map<String, Object>> combinedMatches = combineMatches(memoryMatches, repositoryMatches);
+        if (!combinedMatches.isEmpty()) {
+            return combinedMatches;
         }
 
         return fallbackDemoMatches(changeRequest);
+    }
+
+    private List<Map<String, Object>> combineMatches(
+            List<Map<String, Object>> memoryMatches,
+            List<Map<String, Object>> repositoryMatches) {
+        Map<String, Map<String, Object>> byFileAndName = new LinkedHashMap<>();
+        for (Map<String, Object> match : memoryMatches) {
+            byFileAndName.putIfAbsent(matchKey(match), match);
+        }
+        for (Map<String, Object> match : repositoryMatches) {
+            byFileAndName.putIfAbsent(matchKey(match), match);
+            if (byFileAndName.size() >= MAX_MATCHES) {
+                break;
+            }
+        }
+        return byFileAndName.values().stream().limit(MAX_MATCHES).toList();
+    }
+
+    private String matchKey(Map<String, Object> match) {
+        return String.valueOf(match.get("file")) + "::" + String.valueOf(match.get("name"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> retrieveFromCodebaseMemory(String changeRequest) {
+        if (graphClient == null) {
+            return List.of();
+        }
+        try {
+            Map<String, Object> result = graphClient.searchProjectContext(targetProjectName, changeRequest, MAX_MEMORY_MATCHES);
+            Object matches = result.get("matches");
+            if (matches instanceof List<?> list) {
+                return list.stream()
+                        .filter(Map.class::isInstance)
+                        .map(item -> (Map<String, Object>) item)
+                        .filter(item -> Boolean.TRUE.equals(item.get("found")))
+                        .toList();
+            }
+        } catch (RuntimeException e) {
+            return List.of();
+        }
+        return List.of();
     }
 
     private List<Map<String, Object>> retrieveFromRepository(Set<String> terms) {

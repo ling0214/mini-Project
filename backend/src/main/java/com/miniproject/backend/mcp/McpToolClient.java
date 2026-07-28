@@ -63,6 +63,11 @@ public class McpToolClient implements ProjectGraphClient, AutoCloseable {
         return callTool("get_test_coverage", Map.of("name", name));
     }
 
+    @Override
+    public Map<String, Object> searchProjectContext(String project, String query, int limit) {
+        return callTool("search_project_context", Map.of("project", project, "query", query, "limit", limit));
+    }
+
     private Map<String, Object> callTool(String toolName, Map<String, Object> arguments) {
         McpSchema.CallToolResult result;
         try {

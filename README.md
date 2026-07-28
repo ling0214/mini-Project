@@ -47,6 +47,7 @@ React Workflow UI
 - Manual/sample ticket intake: captures ticket key, title, priority, reporter, description, acceptance criteria, and comments before analysis.
 - Jira-like dry-run import: imports a sample Jira ticket into Ticket Intake without external writes or credentials.
 - MyBanjirCare sample project context: grounds ticket impact analysis in a Laravel/PHP FYP project domain.
+- Codebase-memory backed project context retrieval: impact analysis now asks the indexed MyBanjirCare code graph for relevant methods/classes/files, then supplements with local repository evidence.
 - Clarification API: creates a linked requirement-analysis artifact with the analyst's additional information.
 - Requirement-to-impact handoff: reviewed requirement artifacts become the source of truth for impact analysis.
 - `impact-analysis`: identifies affected modules, risk notes, rough effort, missing evidence, confidence, and evidence.
@@ -93,4 +94,4 @@ The frontend calls the backend at `http://localhost:8080` by default.
 
 This is a deterministic workflow assistant by default, with an optional LLM-backed requirement-analysis provider. It does not yet include autonomous LLM planning, production auth, multi-repo project selection, or live issue ingestion.
 
-The current project-context demo uses `MyBanjirCare` as a fixed sample target project, but impact analysis now retrieves matching files from the configured local repository path. The next version should replace keyword file retrieval with vector RAG/codebase-memory retrieval from a selected repository.
+The current project-context demo uses `MyBanjirCare` as a fixed sample target project. Impact analysis now retrieves codebase-memory matches first, then supplements them with matching files from the configured local repository path. The next version should add a repository selector and store previous analyst decisions as reusable memory.
