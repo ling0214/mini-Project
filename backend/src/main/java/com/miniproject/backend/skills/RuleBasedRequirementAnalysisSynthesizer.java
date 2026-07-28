@@ -31,11 +31,13 @@ public class RuleBasedRequirementAnalysisSynthesizer implements RequirementAnaly
 
     private static final List<String> ACTOR_WORDS = List.of(
             "user", "customer", "analyst", "admin", "administrator", "agent", "tester",
-            "system", "reviewer", "manager", "client", "applicant", "policyholder");
+            "system", "reviewer", "manager", "client", "applicant", "policyholder",
+            "donor", "victim", "superadmin", "center admin", "collection center admin",
+            "stakeholder", "requester", "reporter");
 
     private static final int MIN_WORDS_FOR_CONCRETE_SCOPE = 8;
 
-    private static final Pattern SENTENCE_SPLIT = Pattern.compile("(?<=[.!?])\\s+");
+    private static final Pattern SENTENCE_SPLIT = Pattern.compile("(?<=[.!?])\\s+|\\R+");
 
     @Override
     public RequirementAnalysisResult synthesize(String description, List<String> sentences, List<String> candidateAreas) {
@@ -98,4 +100,3 @@ public class RuleBasedRequirementAnalysisSynthesizer implements RequirementAnaly
         return sentences;
     }
 }
-

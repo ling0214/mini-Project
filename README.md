@@ -1,13 +1,13 @@
 # mini-Project
 
-Software Analyst Workflow Assistant: a review-gated workbench that helps an analyst move from a requirement or ticket to requirement analysis, clarification, impact analysis, test scenarios, and a compiled analyst report.
+Software Analyst Workflow Assistant: a review-gated workbench that helps an analyst move from ticket intake to requirement analysis, clarification, impact analysis, test scenarios, and a compiled analyst report.
 
 The project is not trying to recreate Claude Skills. It uses a small skill layer, MCP-backed project graph, artifact persistence, and human review gates to support the repetitive workflow around software analysis.
 
 ## Workflow
 
 ```text
-Requirement / Ticket
+Ticket Intake
         |
 Requirement Analysis
         |
@@ -27,6 +27,8 @@ Analyst Report
 ```text
 Project Graph + Issues
         |
+Sample Target Project Context
+        |
 MCP Tool Layer
         |
 Skill Layer
@@ -40,7 +42,11 @@ React Workflow UI
 
 ## Implemented
 
-- `requirement-analysis`: extracts business rules, ambiguities, missing information, assumptions, potential affected areas, confidence, and evidence.
+- `requirement-analysis`: extracts business rules, ambiguities, missing information, assumptions, scope clues, confidence, and evidence.
+- Optional LLM-backed requirement analysis: the same skill boundary can use OpenAI Responses API when enabled, while the default remains rule-based for repeatable demos.
+- Manual/sample ticket intake: captures ticket key, title, priority, reporter, description, acceptance criteria, and comments before analysis.
+- Jira-like dry-run import: imports a sample Jira ticket into Ticket Intake without external writes or credentials.
+- MyBanjirCare sample project context: grounds ticket impact analysis in a Laravel/PHP FYP project domain.
 - Clarification API: creates a linked requirement-analysis artifact with the analyst's additional information.
 - Requirement-to-impact handoff: reviewed requirement artifacts become the source of truth for impact analysis.
 - `impact-analysis`: identifies affected modules, risk notes, rough effort, missing evidence, confidence, and evidence.
@@ -85,4 +91,6 @@ The frontend calls the backend at `http://localhost:8080` by default.
 
 ## Current Scope
 
-This is a deterministic workflow assistant with rule-based synthesis. It does not yet include autonomous LLM planning, production auth, multi-repo project selection, or live issue ingestion.
+This is a deterministic workflow assistant by default, with an optional LLM-backed requirement-analysis provider. It does not yet include autonomous LLM planning, production auth, multi-repo project selection, or live issue ingestion.
+
+The current project-context demo uses `MyBanjirCare` as a fixed sample target project, but impact analysis now retrieves matching files from the configured local repository path. The next version should replace keyword file retrieval with vector RAG/codebase-memory retrieval from a selected repository.

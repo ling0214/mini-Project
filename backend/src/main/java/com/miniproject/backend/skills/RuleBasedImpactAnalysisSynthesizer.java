@@ -10,9 +10,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Week 2 default: assembles the impact analysis purely from trace_impact +
- * search_issues facts, no LLM call — same "rule-based first" position as
- * {@link RuleBasedAnswerSynthesizer} (see docs/architecture.md).
+ * Week 2 default: assembles the impact analysis from graph traces, issue
+ * matches, and optional project-context matches. No LLM call is made here.
  */
 @Component
 public class RuleBasedImpactAnalysisSynthesizer implements ImpactAnalysisSynthesizer {
@@ -35,9 +34,13 @@ public class RuleBasedImpactAnalysisSynthesizer implements ImpactAnalysisSynthes
                 unresolvedCandidates.add(entryName);
                 continue;
             }
+
             String entrySource = trace.get("file") + ":" + trace.get("line");
+            String entryReason = trace.get("reason") == null
+                    ? entryName + " matched in the change request"
+                    : String.valueOf(trace.get("reason"));
             affectedByName.putIfAbsent(entryName, new ImpactAnalysisResult.AffectedModule(
-                    entryName, entrySource, entryName + " — entry point matched in the change request", entrySource));
+                    entryName, entrySource, entryReason, entrySource));
 
             List<Map<String, Object>> affected = (List<Map<String, Object>>) trace.getOrDefault("affected", List.of());
             for (Map<String, Object> item : affected) {
@@ -58,7 +61,7 @@ public class RuleBasedImpactAnalysisSynthesizer implements ImpactAnalysisSynthes
             missingEvidence.add("No identifier in the change request resolved against the project graph.");
         } else if (!unresolvedCandidates.isEmpty()) {
             missingEvidence.add(unresolvedCandidates.size() + " candidate word(s) did not resolve in the project graph ("
-                    + String.join(", ", unresolvedCandidates) + ") — insufficient graph coverage for those identifiers.");
+                    + String.join(", ", unresolvedCandidates) + ") - insufficient graph coverage for those identifiers.");
         }
 
         List<ImpactAnalysisResult.AffectedModule> affectedModules = List.copyOf(affectedByName.values());

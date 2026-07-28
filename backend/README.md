@@ -9,7 +9,8 @@ See [../docs/architecture.md](../docs/architecture.md) for the full design.
 | Endpoint | Purpose |
 |---|---|
 | `GET /api/health` | Backend health check |
-| `POST /api/skills/requirement-analysis` | Analyze a requirement or ticket |
+| `POST /api/integrations/jira/import` | Dry-run Jira-like ticket import for Ticket Intake |
+| `POST /api/skills/requirement-analysis` | Analyze a requirement or ticket intake payload |
 | `POST /api/artifacts/{taskId}/clarify` | Add clarification and create a linked requirement artifact |
 | `PATCH /api/artifacts/{taskId}/review` | Mark an artifact as reviewed |
 | `POST /api/artifacts/{taskId}/handoff/impact-analysis` | Run impact analysis from a reviewed requirement artifact |
@@ -25,6 +26,10 @@ Legacy direct skill endpoints still exist for free-form use:
 - `POST /api/skills/impact-analysis`
 - `POST /api/skills/impact-analysis/from-pr`
 - `POST /api/skills/test-case-gen`
+
+Jira import is currently a dry-run sample importer. It does not call Jira yet; real Jira read-only import is the next integration phase.
+
+Requirement analysis is rule-based by default for stable local demos. The same `RequirementAnalysisSynthesizer` boundary can be switched to an LLM-backed implementation without changing the controller, coordinator, artifact model, or frontend workflow.
 
 ## Agent Layer
 
@@ -65,7 +70,7 @@ Backend starts on `http://localhost:8080`.
 ```powershell
 curl -X POST http://localhost:8080/api/skills/requirement-analysis `
   -H "Content-Type: application/json" `
-  -d "{\"profile\":\"software-analyst\",\"description\":\"The customer must be able to change payment_method after checkout is submitted.\"}"
+  -d "{\"profile\":\"software-analyst\",\"ticket_key\":\"PAY-102\",\"ticket_title\":\"Allow payment method update\",\"priority\":\"High\",\"description\":\"The customer must be able to change payment_method after checkout is submitted.\",\"acceptance_criteria\":\"Customer can update payment method before payment confirmation.\"}"
 ```
 
 ## Test
@@ -83,3 +88,23 @@ mvn -q "-Dtest=SoftwareAnalystAgentTest,AnalysisStatusTest,RequirementAnalysisSk
 ## Config
 
 Tracked defaults live in `src/main/resources/application.yml`. Real API keys or integration credentials belong only in `src/main/resources/application-local.yml` or environment variables.
+
+Project-context retrieval defaults to the cloned MyBanjirCare sample project:
+
+```powershell
+$env:ANALYSIS_TARGET_PROJECT_NAME="MyBanjirCare"
+$env:ANALYSIS_TARGET_PROJECT_PATH="C:\tmp\MyBanjirCare"
+```
+
+Change those values to point impact analysis at another local repository.
+
+Optional LLM-backed requirement analysis:
+
+```powershell
+$env:ANALYSIS_REQUIREMENT_PROVIDER="llm"
+$env:ANALYSIS_LLM_PROVIDER="openai"
+$env:OPENAI_API_KEY="your-local-key"
+$env:OPENAI_MODEL="gpt-5-mini"
+```
+
+If the provider is enabled but no AI response is available, the backend falls back to rule-based requirement analysis so the workflow remains usable.

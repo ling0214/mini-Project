@@ -3,6 +3,7 @@ package com.miniproject.backend.skills;
 import com.miniproject.backend.mcp.ProjectGraphClient;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -40,19 +41,29 @@ public class ImpactAnalysisSkill {
 
     private final ProjectGraphClient graphClient;
     private final ImpactAnalysisSynthesizer synthesizer;
+    private final ProjectContextMatcher projectContextMatcher;
 
-    public ImpactAnalysisSkill(ProjectGraphClient graphClient, ImpactAnalysisSynthesizer synthesizer) {
+    public ImpactAnalysisSkill(
+            ProjectGraphClient graphClient,
+            ImpactAnalysisSynthesizer synthesizer,
+            ProjectContextMatcher projectContextMatcher) {
         this.graphClient = graphClient;
         this.synthesizer = synthesizer;
+        this.projectContextMatcher = projectContextMatcher;
     }
 
     public ImpactAnalysisResult run(String changeRequest) {
         Set<String> candidates = extractCandidates(changeRequest);
-        List<Map<String, Object>> traces = candidates.stream()
-                .map(name -> graphClient.traceImpact(name, MAX_HOPS))
-                .toList();
+        List<Map<String, Object>> projectContextTraces = projectContextMatcher.findRelevantTraces(changeRequest);
+        List<Map<String, Object>> traces = projectContextTraces.isEmpty()
+                ? new ArrayList<>(candidates.stream()
+                        .map(name -> graphClient.traceImpact(name, MAX_HOPS))
+                        .toList())
+                : projectContextTraces;
 
-        Map<String, Object> issueSearch = graphClient.searchIssues(changeRequest);
+        Map<String, Object> issueSearch = projectContextTraces.isEmpty()
+                ? graphClient.searchIssues(changeRequest)
+                : Map.of("query", changeRequest, "matches", List.of(), "count", 0);
 
         return synthesizer.synthesize(changeRequest, candidates, traces, issueSearch);
     }

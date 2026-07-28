@@ -34,4 +34,46 @@ class RequirementAnalysisSkillTest {
 
         assertThat(result.missingInformation()).anyMatch(m -> m.contains("No actor/role"));
     }
+
+    @Test
+    void myBanjirCareDonorTicketIsRecognizedAsHavingActor() {
+        RequirementAnalysisResult result = skill.run(
+                "Donor should be able to filter approved aid request records by city, category, and urgency before responding to help.");
+
+        assertThat(result.missingInformation()).noneMatch(m -> m.contains("No actor/role"));
+    }
+
+    @Test
+    void ticketMetadataLabelsAreNotCandidateAreas() {
+        RequirementAnalysisResult result = skill.run("""
+                Ticket key: MBC-204
+                Title: Allow donors to filter available aid requests by city and urgency
+                Priority: High
+                Reporter: FYP Supervisor
+
+                Description:
+                Donor should be able to filter approved aid request records by city, category, and urgency.
+                """);
+
+        assertThat(result.potentialAffectedAreas())
+                .doesNotContain("Ticket", "key", "Title", "Priority", "Reporter", "MBC", "FYP", "Supervisor", "High")
+                .contains("donors", "aid", "requests", "city", "urgency");
+    }
+
+    @Test
+    void ticketMetadataDoesNotLeakIntoBusinessRuleText() {
+        RequirementAnalysisResult result = skill.run("""
+                Ticket key: MBC-204
+                Title: Allow donors to filter available aid requests by city and urgency
+                Priority: High
+                Reporter: FYP Supervisor
+
+                Description:
+                Donor should be able to filter approved aid request records by city, category, and urgency before responding to help.
+                """);
+
+        assertThat(result.businessRules()).containsExactly(
+                "Donor should be able to filter approved aid request records by city, category, and urgency before responding to help.");
+        assertThat(result.businessRules().get(0)).doesNotContain("Ticket key", "Reporter");
+    }
 }
