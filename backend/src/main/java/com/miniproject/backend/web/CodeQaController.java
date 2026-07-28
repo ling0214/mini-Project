@@ -69,10 +69,10 @@ public class CodeQaController {
     @CrossOrigin(origins = "*")
     @PostMapping("/requirement-analysis")
     public RequirementAnalysisResponse requirementAnalysis(@RequestBody RequirementAnalysisRequest request) {
-        if (request.profile() == null || request.description() == null || request.description().isBlank()) {
-            throw new IllegalArgumentException("profile and description are required");
+        if (request.profile() == null || request.analysisInput().isBlank()) {
+            throw new IllegalArgumentException("profile and ticket details are required");
         }
-        return RequirementAnalysisResponse.of(coordinator.requirementAnalysis(request.profile(), request.description()));
+        return RequirementAnalysisResponse.of(coordinator.requirementAnalysis(request.profile(), request.analysisInput()));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

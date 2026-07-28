@@ -30,7 +30,14 @@ public class RequirementAnalysisSkill {
             "allow", "allows", "allowed", "able", "user", "users", "system", "not", "no", "all",
             "any", "after", "before", "apply", "applying", "can", "to", "of", "in", "on", "if",
             "then", "else", "must", "shall", "cannot", "unless", "always", "never", "customer",
-            "customers", "please", "need", "needs", "needed", "want", "wants", "wanted");
+            "customers", "please", "need", "needs", "needed", "want", "wants", "wanted",
+            "ticket", "key", "title", "priority", "reporter", "description", "acceptance",
+            "criteria", "comments", "notes", "given", "select", "selects", "page", "matching",
+            "mbc", "fyp", "supervisor", "stakeholder", "dry", "run", "import",
+            "high", "medium", "low", "critical", "only", "shows", "show", "use", "first",
+            "future", "enhancement", "required", "now", "available", "records", "responding",
+            "help", "browsing", "treated", "confirms", "confirm", "confirmed", "whether",
+            "are", "is", "was", "were", "be", "been", "shown");
 
     private final RequirementAnalysisSynthesizer synthesizer;
 
@@ -56,4 +63,3 @@ public class RequirementAnalysisSkill {
         return candidates;
     }
 }
-

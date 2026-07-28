@@ -77,6 +77,36 @@ const CHIPS = {
   "test-case-gen": ["checkout_endpoint", "charge_card", "calculate_total"],
 };
 
+const EMPTY_TICKET = {
+  ticketKey: "",
+  ticketTitle: "",
+  priority: "Medium",
+  reporter: "",
+  description: "",
+  acceptanceCriteria: "",
+  comments: "",
+};
+
+const SAMPLE_TICKET = {
+  ticketKey: "MBC-204",
+  ticketTitle: "Allow donors to filter available aid requests by city and urgency",
+  priority: "High",
+  reporter: "FYP Supervisor",
+  description:
+    "Donor should be able to filter approved aid request records by city, category, and urgency before responding to help.",
+  acceptanceCriteria:
+    "Given a donor is browsing available aid requests, when the donor selects city, category, or urgency filters, then the page only shows matching approved aid requests.",
+  comments:
+    "Need to confirm whether filters should update through page reload or AJAX, and whether the same filter should apply to admin monitoring later.",
+};
+
+const TARGET_PROJECT = {
+  name: "MyBanjirCare",
+  framework: "Laravel 10 / PHP 8.1",
+  source: "github.com/ling0214/MyBanjirCare",
+  modules: ["Aid Request", "Donation", "Flood Report", "Collection Center", "Auth / OTP"],
+};
+
 function App() {
   const [backendStatus, setBackendStatus] = useState("checking");
 
@@ -268,7 +298,7 @@ function WorkflowRail({ step }) {
  * analyst's workflow, not which role is "allowed" to click what.
  */
 const WORKFLOW_STEPS = [
-  ["requirement", "Requirement Intake"],
+  ["requirement", "Ticket Intake"],
   ["impact", "Impact Analysis"],
   ["test", "Test Scenarios"],
   ["report", "Handoff Summary"],
@@ -276,7 +306,7 @@ const WORKFLOW_STEPS = [
 
 function AnalystWorkflow() {
   const [phase, setPhase] = useState("requirement");
-  const [description, setDescription] = useState("");
+  const [ticket, setTicket] = useState(EMPTY_TICKET);
   const [reqArtifact, setReqArtifact] = useState(null);
   const [impactArtifact, setImpactArtifact] = useState(null);
   const [impactLoading, setImpactLoading] = useState(false);
@@ -289,7 +319,7 @@ function AnalystWorkflow() {
 
   function reset() {
     setPhase("requirement");
-    setDescription("");
+    setTicket(EMPTY_TICKET);
     setReqArtifact(null);
     setImpactArtifact(null);
     setImpactError("");
@@ -374,8 +404,8 @@ function AnalystWorkflow() {
       <main className="workspace">
         {phase === "requirement" && (
           <RequirementPhase
-            description={description}
-            onDescriptionChange={setDescription}
+            ticket={ticket}
+            onTicketChange={setTicket}
             reqArtifact={reqArtifact}
             reqStatus={reqStatus}
             onArtifact={setReqArtifact}
@@ -404,7 +434,7 @@ function AnalystWorkflow() {
         )}
         {phase === "report" && (
           <ReportPhase
-            description={description}
+            ticket={ticket}
             reqArtifact={reqArtifact}
             impactArtifact={impactArtifact}
             testArtifacts={testArtifacts}
@@ -445,7 +475,7 @@ function AnalystWorkflowRail({ phase, reqStatus, impactReviewed, testCount, onRe
       })}
       <div className="rail-divider" />
       <div className="rail-note">
-        One continuous requirement → impact → test → report pipeline. Clarification and review gates run inline before you can move to the next step.
+        One continuous ticket intake to impact to test to report pipeline. Clarification and review gates run inline before you can move to the next step.
       </div>
       <button className="btn ghost compact rail-reset" type="button" onClick={onReset}>
         Start new analysis
@@ -454,34 +484,18 @@ function AnalystWorkflowRail({ phase, reqStatus, impactReviewed, testCount, onRe
   );
 }
 
-function RequirementPhase({ description, onDescriptionChange, reqArtifact, reqStatus, onArtifact, onReview }) {
+function RequirementPhase({ ticket, onTicketChange, reqArtifact, reqStatus, onArtifact, onReview }) {
   const reviewed = Boolean(reqArtifact?.reviewed);
   const reviewBlocked = reqStatus === "NEEDS_CLARIFICATION";
   return (
     <section className="screen">
       <HeaderBlock
-        eyebrow="Step 1 · Requirement Intake"
-        title="Describe the requirement or change request"
-        subtitle="Paste a user story, ticket description, or change request. The workflow surfaces missing information before anything moves forward."
+        eyebrow="Step 1 - Ticket Intake"
+        title="Capture the change request ticket"
+        subtitle="Enter the ticket details an analyst normally receives before clarification, impact analysis, testing scope, and handoff."
       />
-      {!reqArtifact && (
-        <SkillForm
-          label="Requirement or change request"
-          value={description}
-          onChange={onDescriptionChange}
-          chips={CHIPS["requirement-analysis"]}
-          placeholder="Describe the business change the analyst needs to assess"
-          actionLabel="Analyze Requirement"
-          onSubmit={async () => {
-            const response = await api("/api/skills/requirement-analysis", {
-              method: "POST",
-              body: { profile: ANALYST_PROFILE, description },
-            });
-            return normalizeRequirementResponse(response);
-          }}
-          onArtifact={onArtifact}
-        />
-      )}
+      {!reqArtifact && <ProjectContextCard />}
+      {!reqArtifact && <TicketIntakeForm ticket={ticket} onChange={onTicketChange} onArtifact={onArtifact} />}
       {reqArtifact && (
         <>
           <RequirementAnalysisReport artifact={reqArtifact} result={reqArtifact.result || {}} onArtifact={onArtifact} />
@@ -493,6 +507,205 @@ function RequirementPhase({ description, onDescriptionChange, reqArtifact, reqSt
           </div>
         </>
       )}
+    </section>
+  );
+}
+
+function ProjectContextCard() {
+  return (
+    <section className="project-context-panel">
+      <div>
+        <label className="field-label">Target project context</label>
+        <h2>{TARGET_PROJECT.name}</h2>
+        <p>{TARGET_PROJECT.framework}</p>
+      </div>
+      <div className="project-context-meta">
+        <span>{TARGET_PROJECT.source}</span>
+        <div className="module-chip-row">
+          {TARGET_PROJECT.modules.map((module) => (
+            <span key={module} className="module-chip">
+              {module}
+            </span>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function TicketIntakeForm({ ticket, onChange, onArtifact }) {
+  const [loading, setLoading] = useState(false);
+  const [importKey, setImportKey] = useState("MBC-204");
+  const [importLoading, setImportLoading] = useState(false);
+  const [importMessage, setImportMessage] = useState("");
+  const [error, setError] = useState("");
+  const ticketText = formatTicketInput(ticket);
+
+  function update(field, value) {
+    onChange({ ...ticket, [field]: value });
+  }
+
+  async function importFromJira() {
+    setError("");
+    setImportMessage("");
+    if (!importKey.trim()) {
+      setError("Jira ticket key or URL is required.");
+      return;
+    }
+    setImportLoading(true);
+    try {
+      const response = await api("/api/integrations/jira/import", {
+        method: "POST",
+        body: importKey.includes("/")
+          ? { ticket_url: importKey }
+          : { ticket_key: importKey },
+      });
+      onChange({
+        ticketKey: response.ticket_key || "",
+        ticketTitle: response.ticket_title || "",
+        priority: response.priority || "Medium",
+        reporter: response.reporter || "",
+        description: response.description || "",
+        acceptanceCriteria: response.acceptance_criteria || "",
+        comments: response.comments || "",
+      });
+      setImportMessage(response.message || "Jira ticket imported.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setImportLoading(false);
+    }
+  }
+
+  async function submit() {
+    setError("");
+    if (!ticket.description.trim() && !ticket.ticketTitle.trim()) {
+      setError("Ticket title or description is required.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await api("/api/skills/requirement-analysis", {
+        method: "POST",
+        body: {
+          profile: ANALYST_PROFILE,
+          ticket_key: ticket.ticketKey,
+          ticket_title: ticket.ticketTitle,
+          priority: ticket.priority,
+          reporter: ticket.reporter,
+          description: ticket.description,
+          acceptance_criteria: ticket.acceptanceCriteria,
+          comments: ticket.comments,
+        },
+      });
+      onArtifact(normalizeRequirementResponse(response));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <section className="work-panel ticket-intake-panel">
+      <section className="jira-import-panel">
+        <div>
+          <label className="field-label">Import from Jira</label>
+          <p>Dry-run import. The analyst reviews the ticket before running AI analysis.</p>
+        </div>
+        <div className="jira-import-controls">
+          <input
+            type="text"
+            value={importKey}
+            onChange={(event) => setImportKey(event.target.value)}
+            placeholder="MBC-204 or Jira ticket URL"
+          />
+          <button className="btn ghost" type="button" disabled={importLoading} onClick={importFromJira}>
+            {importLoading ? "Importing..." : "Import ticket"}
+          </button>
+        </div>
+        {importMessage && <div className="info-box">{importMessage}</div>}
+      </section>
+      <div className="ticket-form-actions">
+        <label className="field-label">Ticket details</label>
+        <button className="btn ghost compact" type="button" onClick={() => onChange(SAMPLE_TICKET)}>
+          Load sample ticket
+        </button>
+      </div>
+      <div className="ticket-meta-grid">
+        <label>
+          Ticket key
+          <input
+            type="text"
+            value={ticket.ticketKey}
+            onChange={(event) => update("ticketKey", event.target.value)}
+            placeholder="PAY-102"
+          />
+        </label>
+        <label>
+          Priority
+          <select value={ticket.priority} onChange={(event) => update("priority", event.target.value)}>
+            <option>Low</option>
+            <option>Medium</option>
+            <option>High</option>
+            <option>Critical</option>
+          </select>
+        </label>
+        <label>
+          Reporter
+          <input
+            type="text"
+            value={ticket.reporter}
+            onChange={(event) => update("reporter", event.target.value)}
+            placeholder="Product owner / stakeholder"
+          />
+        </label>
+      </div>
+      <label>
+        Ticket title
+        <input
+          type="text"
+          value={ticket.ticketTitle}
+          onChange={(event) => update("ticketTitle", event.target.value)}
+          placeholder="Short summary from Jira, email, or meeting note"
+        />
+      </label>
+      <label>
+        Description
+        <textarea
+          value={ticket.description}
+          onChange={(event) => update("description", event.target.value)}
+          placeholder="Describe the requested business change"
+        />
+      </label>
+      <label>
+        Acceptance criteria
+        <textarea
+          className="compact-textarea"
+          value={ticket.acceptanceCriteria}
+          onChange={(event) => update("acceptanceCriteria", event.target.value)}
+          placeholder="Given / when / then, validation rules, or expected outcome"
+        />
+      </label>
+      <label>
+        Comments / clarification history
+        <textarea
+          className="compact-textarea"
+          value={ticket.comments}
+          onChange={(event) => update("comments", event.target.value)}
+          placeholder="Stakeholder comments, email notes, or meeting follow-up"
+        />
+      </label>
+      <details className="ticket-preview">
+        <summary>Preview analysis input</summary>
+        <pre>{ticketText || "(ticket details will appear here)"}</pre>
+      </details>
+      {error && <ErrorBox message={error} />}
+      <div className="action-row">
+        <button className="btn primary" type="button" disabled={loading} onClick={submit}>
+          {loading ? "Analysing..." : "Analyze Ticket"}
+        </button>
+      </div>
     </section>
   );
 }
@@ -604,9 +817,10 @@ function TestPhase({ impactArtifact, testArtifacts, onGenerate, onBack, onNext }
   );
 }
 
-function ReportPhase({ description, reqArtifact, impactArtifact, testArtifacts, summaryArtifact, onGenerateSummary, onReviewSummary, onRestart }) {
+function ReportPhase({ ticket, reqArtifact, impactArtifact, testArtifacts, summaryArtifact, onGenerateSummary, onReviewSummary, onRestart }) {
   const reqResult = reqArtifact?.result || {};
   const impactResult = impactArtifact?.result || {};
+  const ticketText = formatTicketInput(ticket);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   return (
@@ -618,7 +832,7 @@ function ReportPhase({ description, reqArtifact, impactArtifact, testArtifacts, 
       />
       {!summaryArtifact && (
         <>
-          <div className="answer-panel">{description}</div>
+          <div className="answer-panel">{ticketText}</div>
           <div className="stat-grid">
             <Stat
               label="Requirement status"
@@ -996,17 +1210,18 @@ function ReportScreen({ artifact, role, handoffs, onReviewed, onRunAnother, onCh
 function RequirementAnalysisReport({ artifact, result, onArtifact }) {
   const status = getRequirementStatus(artifact);
   const ambiguities = result.ambiguities || [];
+  const scopeClues = cleanScopeClues(result.potential_affected_areas || []);
   return (
     <>
       <div className="stat-grid">
         <Stat label="Workflow status" value={<span className={`tag ${statusClass(status)}`}>{formatStatus(status)}</span>} />
         <Stat label="Confidence" value={<Tag kind="confidence" value={result.confidence} />} />
-        <Stat label="Potential areas" value={(result.potential_affected_areas || []).length} />
+        <Stat label="Scope clues" value={scopeClues.length} />
       </div>
       <SimpleList title="Business rules" items={result.business_rules || []} />
       <SimpleList title="Missing information" items={result.missing_information || []} tone={status === "NEEDS_CLARIFICATION" ? "danger" : undefined} />
       <SimpleList title="Assumptions" items={result.assumptions || []} />
-      <SimpleList title="Potential affected areas" items={result.potential_affected_areas || []} />
+      <ScopeClues items={scopeClues} />
       {ambiguities.length > 0 && (
         <section className="list-section">
           <h3>Ambiguities</h3>
@@ -1386,6 +1601,22 @@ function SimpleList({ title, items, tone }) {
   );
 }
 
+function ScopeClues({ items }) {
+  if (!items.length) return null;
+  return (
+    <section className="list-section scope-clues-section">
+      <h3>Scope clues</h3>
+      <div className="scope-clue-row">
+        {items.map((item) => (
+          <span key={item} className="scope-clue">
+            {formatScopeClue(item)}
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function Stat({ label, value }) {
   return (
     <div className="stat">
@@ -1433,6 +1664,107 @@ function formatStatus(status) {
 
 function statusClass(status) {
   return status === "READY_FOR_REVIEW" ? "reviewed" : "unreviewed";
+}
+
+const SCOPE_CLUE_STOPWORDS = new Set([
+  "ticket",
+  "key",
+  "title",
+  "priority",
+  "reporter",
+  "description",
+  "acceptance",
+  "criteria",
+  "comments",
+  "notes",
+  "given",
+  "when",
+  "then",
+  "page",
+  "matching",
+  "mbc",
+  "fyp",
+  "supervisor",
+  "stakeholder",
+  "high",
+  "medium",
+  "low",
+  "critical",
+  "only",
+  "shows",
+  "show",
+  "use",
+  "first",
+  "future",
+  "enhancement",
+  "required",
+  "now",
+  "available",
+  "records",
+  "responding",
+  "help",
+  "browsing",
+  "treated",
+  "confirms",
+  "confirm",
+  "whether",
+  "dry",
+  "run",
+  "import",
+]);
+
+function cleanScopeClues(items) {
+  const seen = new Set();
+  return items
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+    .filter((item) => {
+      const normalized = item.toLowerCase().replaceAll("_", " ").replaceAll("-", " ");
+      if (SCOPE_CLUE_STOPWORDS.has(normalized)) {
+        return false;
+      }
+      if (/^\d+$/.test(normalized)) {
+        return false;
+      }
+      if (seen.has(normalized)) {
+        return false;
+      }
+      seen.add(normalized);
+      return true;
+    })
+    .slice(0, 10);
+}
+
+function formatScopeClue(item) {
+  return String(item).replaceAll("_", " ").replaceAll("-", " ");
+}
+
+function formatTicketInput(ticket) {
+  const lines = [];
+  appendTicketLine(lines, "Ticket key", ticket.ticketKey);
+  appendTicketLine(lines, "Title", ticket.ticketTitle);
+  appendTicketLine(lines, "Priority", ticket.priority);
+  appendTicketLine(lines, "Reporter", ticket.reporter);
+  appendTicketBlock(lines, "Description", ticket.description);
+  appendTicketBlock(lines, "Acceptance criteria", ticket.acceptanceCriteria);
+  appendTicketBlock(lines, "Comments / notes", ticket.comments);
+  return lines.join("\n").trim();
+}
+
+function appendTicketLine(lines, label, value) {
+  if (value && value.trim()) {
+    lines.push(`${label}: ${value.trim()}`);
+  }
+}
+
+function appendTicketBlock(lines, label, value) {
+  if (value && value.trim()) {
+    if (lines.length > 0) {
+      lines.push("");
+    }
+    lines.push(`${label}:`);
+    lines.push(value.trim());
+  }
 }
 
 function ErrorBox({ message }) {

@@ -33,6 +33,20 @@ mcp:
   python-executable: ../mcp-server/.venv/Scripts/python.exe
   server-args: -m,mcp_server.server
 
+analysis:
+  requirement:
+    # rule-based keeps the demo deterministic. Set to "llm" to route
+    # RequirementAnalysisSkill through LlmRequirementAnalysisSynthesizer.
+    provider: ${ANALYSIS_REQUIREMENT_PROVIDER:rule-based}
+  llm:
+    # rule-based/noop by default. Set to "openai" together with OPENAI_API_KEY
+    # to enable OpenAI-backed requirement analysis.
+    provider: ${ANALYSIS_LLM_PROVIDER:rule-based}
+  target-project:
+    # Current demo target. Override these when testing another project.
+    name: ${ANALYSIS_TARGET_PROJECT_NAME:MyBanjirCare}
+    path: ${ANALYSIS_TARGET_PROJECT_PATH:C:/tmp/MyBanjirCare}
+
 anthropic:
   # Not read by any code yet — no LLM-based synthesizer is wired up (see
   # docs/proposal.md Section 5.7/Chapter 15). This just reserves the
