@@ -1,7 +1,9 @@
 package com.miniproject.backend.web;
 
+import com.miniproject.backend.integrations.CalendarImportRequest;
 import com.miniproject.backend.integrations.CsvTicketImportRequest;
 import com.miniproject.backend.integrations.CsvTicketImportService;
+import com.miniproject.backend.integrations.GmailImportRequest;
 import com.miniproject.backend.integrations.GoogleConnector;
 import com.miniproject.backend.integrations.JiraConnector;
 import com.miniproject.backend.integrations.JiraTicketImportRequest;
@@ -108,6 +110,24 @@ public class IntegrationController {
     @GetMapping("/google/gmail/summary")
     public GoogleConnector.GmailSummary googleGmailSummary() {
         return googleConnector.gmailSummary();
+    }
+
+    @CrossOrigin(origins = "*")
+    @GetMapping("/google/gmail/messages")
+    public List<GoogleConnector.GmailMessageSummary> googleGmailMessages() {
+        return googleConnector.listRecentUnreadMessages(5);
+    }
+
+    @CrossOrigin(origins = "*")
+    @PostMapping("/google/gmail/import")
+    public JiraTicketImportResponse importGmailMessage(@RequestBody GmailImportRequest request) {
+        return googleConnector.importGmailMessage(request.messageId());
+    }
+
+    @CrossOrigin(origins = "*")
+    @PostMapping("/google/calendar/import")
+    public JiraTicketImportResponse importCalendarEvent(@RequestBody CalendarImportRequest request) {
+        return googleConnector.importCalendarEvent(request.eventId());
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

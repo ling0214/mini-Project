@@ -210,6 +210,142 @@ public class GoogleConnector {
         return new GmailSummary(response.path("messagesUnread").asInt(0));
     }
 
+    /**
+     * A handful of unread messages to pick from before importing one as a
+     * ticket — metadata only (subject/from/date/snippet), not the full body,
+     * so this stays a cheap N+1 (list + one metadata-only GET per message)
+     * instead of N+1 full-body fetches.
+     */
+    public List<GmailMessageSummary> listRecentUnreadMessages(int maxResults) {
+        String token = requireValidToken();
+        JsonNode list = getJson(
+                "https://www.googleapis.com/gmail/v1/users/me/messages?q=is:unread&maxResults=" + maxResults, token);
+        List<GmailMessageSummary> summaries = new ArrayList<>();
+        for (JsonNode item : list.path("messages")) {
+            String id = item.path("id").asText("");
+            if (id.isBlank()) {
+                continue;
+            }
+            String metaUrl = "https://www.googleapis.com/gmail/v1/users/me/messages/" + id
+                    + "?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date";
+            JsonNode message = getJson(metaUrl, token);
+            JsonNode headers = message.path("payload").path("headers");
+            summaries.add(new GmailMessageSummary(
+                    id,
+                    headerValue(headers, "Subject", "(no subject)"),
+                    headerValue(headers, "From", ""),
+                    message.path("snippet").asText(""),
+                    headerValue(headers, "Date", "")));
+        }
+        return summaries;
+    }
+
+    /** Full message body (first text/plain part), converted straight into the shared ticket-import shape. */
+    public JiraTicketImportResponse importGmailMessage(String messageId) {
+        if (messageId == null || messageId.isBlank()) {
+            throw new IllegalArgumentException("messageId is required");
+        }
+        String token = requireValidToken();
+        JsonNode message = getJson(
+                "https://www.googleapis.com/gmail/v1/users/me/messages/" + messageId + "?format=full", token);
+        JsonNode headers = message.path("payload").path("headers");
+        String subject = headerValue(headers, "Subject", "(no subject)");
+        String from = headerValue(headers, "From", "Email import");
+        String date = headerValue(headers, "Date", "");
+        String body = extractPlainText(message.path("payload"));
+        String description = body.isBlank() ? message.path("snippet").asText("") : body;
+        String threadUrl = "https://mail.google.com/mail/u/0/#inbox/" + message.path("threadId").asText(messageId);
+
+        return new JiraTicketImportResponse(
+                "",
+                subject,
+                "Medium",
+                from,
+                description,
+                "",
+                "",
+                "email",
+                "Email",
+                "Gmail import",
+                threadUrl,
+                date,
+                false,
+                "Imported email thread from Gmail.");
+    }
+
+    /** Full event detail, converted into the shared ticket-import shape — attendees ride along as reporter/comments. */
+    public JiraTicketImportResponse importCalendarEvent(String eventId) {
+        if (eventId == null || eventId.isBlank()) {
+            throw new IllegalArgumentException("eventId is required");
+        }
+        String token = requireValidToken();
+        JsonNode event = getJson("https://www.googleapis.com/calendar/v3/calendars/primary/events/" + eventId, token);
+        String title = event.path("summary").asText("(no title)");
+        JsonNode start = event.path("start");
+        String startTime = start.path("dateTime").asText(start.path("date").asText(""));
+        String organizer = event.path("organizer").path("displayName")
+                .asText(event.path("organizer").path("email").asText("Calendar import"));
+        String attendees = joinAttendees(event.path("attendees"));
+        String meetLink = event.path("hangoutLink").asText("");
+        String description = event.path("description").asText("");
+        String comments = attendees.isBlank() ? "" : "Attendees: " + attendees;
+        String sourceUrl = !meetLink.isBlank() ? meetLink : event.path("htmlLink").asText("");
+
+        return new JiraTicketImportResponse(
+                "",
+                title,
+                "Medium",
+                organizer,
+                description.isBlank() ? "(no meeting notes recorded — add them before analysis)" : description,
+                "",
+                comments,
+                "calendar",
+                "Calendar",
+                "Calendar import",
+                sourceUrl,
+                startTime,
+                false,
+                "Imported meeting from Google Calendar.");
+    }
+
+    private static String headerValue(JsonNode headers, String name, String fallback) {
+        if (!headers.isArray()) {
+            return fallback;
+        }
+        for (JsonNode header : headers) {
+            if (name.equalsIgnoreCase(header.path("name").asText(""))) {
+                return header.path("value").asText(fallback);
+            }
+        }
+        return fallback;
+    }
+
+    /** Depth-first search for the first text/plain MIME part; Gmail nests multipart messages under payload.parts. */
+    private static String extractPlainText(JsonNode payload) {
+        String mimeType = payload.path("mimeType").asText("");
+        if (mimeType.startsWith("text/plain")) {
+            return decodeBase64Url(payload.path("body").path("data").asText(""));
+        }
+        for (JsonNode part : payload.path("parts")) {
+            String found = extractPlainText(part);
+            if (!found.isBlank()) {
+                return found;
+            }
+        }
+        return "";
+    }
+
+    private static String decodeBase64Url(String data) {
+        if (data == null || data.isBlank()) {
+            return "";
+        }
+        try {
+            return new String(Base64.getUrlDecoder().decode(data), StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException e) {
+            return "";
+        }
+    }
+
     private String requireValidToken() {
         return validAccessToken().orElseThrow(() -> new ExternalConnectorException(
                 "Google is not connected yet — use /api/integrations/google/connect first."));
@@ -273,6 +409,9 @@ public class GoogleConnector {
     }
 
     public record GmailSummary(int unreadCount) {
+    }
+
+    public record GmailMessageSummary(String id, String subject, String from, String snippet, String date) {
     }
 
     private static String randomState() {

@@ -177,19 +177,109 @@ const QUICK_ACTION_EVENT = "analyst-workbench:quick-action";
 
 function App() {
   const [backendStatus, setBackendStatus] = useState("checking");
+  const [view, setView] = useState("home");
 
   useEffect(() => {
     checkBackend(setBackendStatus);
   }, []);
 
+  if (view === "home") {
+    return <HomePage status={backendStatus} onEnter={() => setView("workbench")} />;
+  }
+
   return (
     <div className="app-shell">
-      <TopBar status={backendStatus} />
+      <TopBar status={backendStatus} onHome={() => setView("home")} />
       <AnalystWorkflow />
       <footer className="app-footer">
         API: <code>{API_BASE}</code> · Artifacts, review gate, Jira issue creation, and Bitbucket PR comments are backed by the Spring Boot service.
       </footer>
     </div>
+  );
+}
+
+function HomePage({ status, onEnter }) {
+  return (
+    <main className="home-shell">
+      <section className="home-hero">
+        <div className="home-nav">
+          <div className="home-brand">
+            <span className="brand-mark">
+              <LogoMark />
+            </span>
+            <div>
+              <strong>Analyst Workbench</strong>
+              <span>Software Analyst workflow assistant</span>
+            </div>
+          </div>
+          <span className={`connection ${status}`}>
+            <span />
+            {status === "up" ? "Backend up" : status === "down" ? "Backend down" : "Checking backend"}
+          </span>
+        </div>
+
+        <div className="home-hero-grid">
+          <div className="home-copy">
+            <div className="eyebrow">Unified analyst operations</div>
+            <h1>One control center for requirement intake, AI analysis, and delivery handoff.</h1>
+            <p>
+              Monitor Jira, email, meetings, and manual requests in one place, then guide each work item through
+              clarification, impact analysis, testing scope, and handoff without switching between tools.
+            </p>
+            <div className="home-actions">
+              <button className="home-primary-action" type="button" onClick={onEnter}>
+                Enter Workbench
+              </button>
+              <div className="home-proof">
+                <strong>4 connected signals</strong>
+                <span>Jira, Email, Google Meet, Calendar</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="home-console" aria-label="Workflow preview">
+            <div className="home-console-head">
+              <span>Live analyst queue</span>
+              <strong>Today</strong>
+            </div>
+            <div className="home-signal-row">
+              {["jira", "email", "meet", "calendar"].map((platform) => (
+                <span key={platform} className={`home-signal ${platform}`}>
+                  <PlatformLogo platform={platform} />
+                </span>
+              ))}
+            </div>
+            <div className="home-ticket-preview">
+              <span>Jira - KAN-1</span>
+              <strong>Allow donors to filter aid requests by city and urgency</strong>
+              <p>AI found missing clarification before impact analysis starts.</p>
+            </div>
+            <div className="home-flow-preview">
+              <span>Intake</span>
+              <span>Clarify</span>
+              <span>Impact</span>
+              <span>Testing</span>
+              <span>Handoff</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="home-capability-row">
+          <div>
+            <strong>Unified Inbox</strong>
+            <span>External platform requests become mapped analyst work items.</span>
+          </div>
+          <div>
+            <strong>AI Skill Pipeline</strong>
+            <span>Requirement, impact, test scope, and report steps stay coordinated.</span>
+          </div>
+          <div>
+            <strong>Review Gates</strong>
+            <span>Human confirmation stays visible before handoff actions.</span>
+          </div>
+        </div>
+      </section>
+    </main>
   );
 }
 
@@ -318,7 +408,7 @@ function LegacyWorkbench() {
   );
 }
 
-function TopBar({ status }) {
+function TopBar({ status, onHome }) {
   function quickAction(action) {
     window.dispatchEvent(new CustomEvent(QUICK_ACTION_EVENT, { detail: { action } }));
   }
@@ -334,6 +424,9 @@ function TopBar({ status }) {
       </div>
       <div className="topbar-spacer" />
       <nav className="topbar-actions" aria-label="Quick actions">
+        <button type="button" onClick={onHome}>
+          Home
+        </button>
         <button type="button" onClick={() => quickAction("inbox")}>
           Inbox
         </button>
@@ -1003,7 +1096,40 @@ function AnalystInboxPhase({ items, onSelect, onManual }) {
   const [csvLoading, setCsvLoading] = useState(false);
   const [csvMessage, setCsvMessage] = useState("");
   const [csvError, setCsvError] = useState("");
+  const [googleConnected, setGoogleConnected] = useState(false);
+  const [gmailMessages, setGmailMessages] = useState([]);
+  const [gmailLoading, setGmailLoading] = useState(false);
+  const [gmailMessage, setGmailMessage] = useState("");
+  const [gmailError, setGmailError] = useState("");
+  const [calendarEvents, setCalendarEvents] = useState([]);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+  const [calendarMessage, setCalendarMessage] = useState("");
+  const [calendarError, setCalendarError] = useState("");
   const allItems = [...importedItems, ...items];
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadGoogleSources() {
+      try {
+        const status = await api("/api/integrations/google/status");
+        if (cancelled || !status.connected) return;
+        setGoogleConnected(true);
+        const [messages, events] = await Promise.all([
+          api("/api/integrations/google/gmail/messages"),
+          api("/api/integrations/google/calendar/events"),
+        ]);
+        if (cancelled) return;
+        setGmailMessages(messages);
+        setCalendarEvents(events);
+      } catch {
+        // Google not connected or unreachable; email/calendar import panels stay hidden.
+      }
+    }
+    loadGoogleSources();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function recordImportedItem(ticket, source, status) {
     const importedItem = {
@@ -1062,6 +1188,44 @@ function AnalystInboxPhase({ items, onSelect, onManual }) {
       setCsvError(err.message);
     } finally {
       setCsvLoading(false);
+    }
+  }
+
+  async function importEmail(messageId) {
+    setGmailError("");
+    setGmailMessage("");
+    setGmailLoading(true);
+    try {
+      const response = await api("/api/integrations/google/gmail/import", {
+        method: "POST",
+        body: { message_id: messageId },
+      });
+      const ticket = ticketFromImportResponse(response);
+      recordImportedItem(ticket, "Email", "Gmail import");
+      setGmailMessage(response.message || "Email imported into Analyst Inbox.");
+    } catch (err) {
+      setGmailError(err.message);
+    } finally {
+      setGmailLoading(false);
+    }
+  }
+
+  async function importCalendarEventItem(eventId) {
+    setCalendarError("");
+    setCalendarMessage("");
+    setCalendarLoading(true);
+    try {
+      const response = await api("/api/integrations/google/calendar/import", {
+        method: "POST",
+        body: { event_id: eventId },
+      });
+      const ticket = ticketFromImportResponse(response);
+      recordImportedItem(ticket, "Calendar", "Calendar import");
+      setCalendarMessage(response.message || "Meeting imported into Analyst Inbox.");
+    } catch (err) {
+      setCalendarError(err.message);
+    } finally {
+      setCalendarLoading(false);
     }
   }
 
@@ -1155,6 +1319,52 @@ function AnalystInboxPhase({ items, onSelect, onManual }) {
             {csvMessage && <div className="info-box">{csvMessage}</div>}
             {csvError && <ErrorBox message={csvError} />}
           </div>
+          {googleConnected && (
+            <div className="inbox-import-box">
+              <label className="field-label">Import from Gmail</label>
+              <p>Unread messages from the connected Google account.</p>
+              <div className="import-pick-list">
+                {gmailMessages.length === 0 && <span className="muted-note">No unread messages.</span>}
+                {gmailMessages.map((msg) => (
+                  <button
+                    key={msg.id}
+                    className="import-pick-item"
+                    type="button"
+                    disabled={gmailLoading}
+                    onClick={() => importEmail(msg.id)}
+                  >
+                    <strong>{msg.subject}</strong>
+                    <span>{msg.from}</span>
+                  </button>
+                ))}
+              </div>
+              {gmailMessage && <div className="info-box">{gmailMessage}</div>}
+              {gmailError && <ErrorBox message={gmailError} />}
+            </div>
+          )}
+          {googleConnected && (
+            <div className="inbox-import-box">
+              <label className="field-label">Import from Calendar</label>
+              <p>Upcoming meetings from the connected Google account.</p>
+              <div className="import-pick-list">
+                {calendarEvents.length === 0 && <span className="muted-note">No upcoming events.</span>}
+                {calendarEvents.map((event) => (
+                  <button
+                    key={event.id}
+                    className="import-pick-item"
+                    type="button"
+                    disabled={calendarLoading}
+                    onClick={() => importCalendarEventItem(event.id)}
+                  >
+                    <strong>{event.title}</strong>
+                    <span>{event.start_time}</span>
+                  </button>
+                ))}
+              </div>
+              {calendarMessage && <div className="info-box">{calendarMessage}</div>}
+              {calendarError && <ErrorBox message={calendarError} />}
+            </div>
+          )}
           <button className="btn ghost" type="button" onClick={onManual}>
             Start manual intake
           </button>

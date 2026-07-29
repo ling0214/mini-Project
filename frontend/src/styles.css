@@ -51,6 +51,252 @@ button {
   cursor: pointer;
 }
 
+/* ---------- Home ---------- */
+
+.home-shell {
+  min-height: 100vh;
+  color: #edf7f7;
+  background:
+    linear-gradient(rgba(26, 166, 183, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(26, 166, 183, 0.08) 1px, transparent 1px),
+    linear-gradient(118deg, rgba(26, 166, 183, 0.16) 0%, transparent 28%),
+    linear-gradient(135deg, #07171c 0%, #102428 46%, #102027 100%);
+  background-size: 48px 48px, 48px 48px, auto, auto;
+  padding: 2rem;
+}
+
+.home-hero {
+  width: min(1180px, 100%);
+  min-height: calc(100vh - 4rem);
+  margin: 0 auto;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 2rem;
+}
+
+.home-nav,
+.home-brand,
+.home-actions,
+.home-signal-row,
+.home-flow-preview,
+.home-capability-row {
+  display: flex;
+  align-items: center;
+}
+
+.home-nav {
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.home-brand {
+  gap: 0.85rem;
+}
+
+.home-brand strong,
+.home-brand span {
+  display: block;
+}
+
+.home-brand strong {
+  color: #ffffff;
+  font-size: 1rem;
+}
+
+.home-brand span {
+  margin-top: 0.1rem;
+  color: rgba(237, 247, 247, 0.62);
+  font-size: 0.82rem;
+}
+
+.home-shell .connection {
+  color: rgba(237, 247, 247, 0.82);
+  border-color: rgba(237, 247, 247, 0.16);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.home-hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(420px, 0.95fr);
+  gap: 2rem;
+  align-items: center;
+}
+
+.home-copy h1 {
+  max-width: 760px;
+  margin: 0.45rem 0 1rem;
+  color: #ffffff;
+  font-size: clamp(2.4rem, 5vw, 4.8rem);
+  line-height: 0.98;
+  font-weight: 760;
+  letter-spacing: 0;
+}
+
+.home-copy p {
+  max-width: 650px;
+  color: rgba(237, 247, 247, 0.72);
+  font-size: 1.08rem;
+  line-height: 1.72;
+}
+
+.home-actions {
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 1.7rem;
+}
+
+.home-primary-action {
+  min-height: 48px;
+  border: 1px solid rgba(26, 166, 183, 0.5);
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--cyan), var(--teal));
+  color: #ffffff;
+  padding: 0.8rem 1.3rem;
+  font-weight: 780;
+  box-shadow: 0 18px 48px rgba(26, 166, 183, 0.26);
+}
+
+.home-primary-action:hover {
+  border-color: rgba(237, 247, 247, 0.5);
+}
+
+.home-proof {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.home-proof strong {
+  color: #ffffff;
+  font-size: 0.95rem;
+}
+
+.home-proof span {
+  color: rgba(237, 247, 247, 0.55);
+  font-size: 0.82rem;
+}
+
+.home-console {
+  min-height: 470px;
+  padding: 1.25rem;
+  border: 1px solid rgba(237, 247, 247, 0.13);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.055));
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(16px);
+}
+
+.home-console-head {
+  display: flex;
+  justify-content: space-between;
+  color: rgba(237, 247, 247, 0.64);
+  font-size: 0.82rem;
+  font-weight: 760;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.home-console-head strong {
+  color: #ffffff;
+}
+
+.home-signal-row {
+  gap: 0.75rem;
+  margin: 1.3rem 0;
+}
+
+.home-signal {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(237, 247, 247, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.home-signal svg {
+  width: 34px;
+  height: 34px;
+}
+
+.home-ticket-preview {
+  padding: 1.1rem;
+  border: 1px solid rgba(26, 166, 183, 0.26);
+  border-radius: 14px;
+  background: rgba(5, 18, 22, 0.5);
+}
+
+.home-ticket-preview span,
+.home-ticket-preview strong,
+.home-ticket-preview p {
+  display: block;
+}
+
+.home-ticket-preview span {
+  color: var(--cyan);
+  font-size: 0.78rem;
+  font-weight: 780;
+  text-transform: uppercase;
+}
+
+.home-ticket-preview strong {
+  margin-top: 0.55rem;
+  color: #ffffff;
+  font-size: 1.18rem;
+  line-height: 1.35;
+}
+
+.home-ticket-preview p {
+  margin: 0.7rem 0 0;
+  color: rgba(237, 247, 247, 0.66);
+}
+
+.home-flow-preview {
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+.home-flow-preview span {
+  border: 1px solid rgba(237, 247, 247, 0.14);
+  border-radius: 999px;
+  padding: 0.45rem 0.7rem;
+  color: rgba(237, 247, 247, 0.78);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 0.8rem;
+  font-weight: 720;
+}
+
+.home-capability-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.home-capability-row div {
+  min-height: 118px;
+  padding: 1rem;
+  border: 1px solid rgba(237, 247, 247, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.065);
+}
+
+.home-capability-row strong,
+.home-capability-row span {
+  display: block;
+}
+
+.home-capability-row strong {
+  color: #ffffff;
+  font-size: 1rem;
+}
+
+.home-capability-row span {
+  margin-top: 0.5rem;
+  color: rgba(237, 247, 247, 0.62);
+  line-height: 1.55;
+}
+
 /* ---------- Shell ---------- */
 
 .app-shell {
@@ -958,6 +1204,52 @@ h3 {
   margin-bottom: 0;
 }
 
+.import-pick-list {
+  display: grid;
+  gap: 0.5rem;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.import-pick-item {
+  display: grid;
+  gap: 0.2rem;
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  color: var(--ink);
+  background: var(--paper-sunken);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.import-pick-item strong {
+  font-size: 0.88rem;
+  overflow-wrap: anywhere;
+}
+
+.import-pick-item span {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.import-pick-item:hover {
+  border-color: var(--teal);
+  background: var(--teal-soft);
+}
+
+.import-pick-item:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.muted-note {
+  font-size: 0.82rem;
+  color: var(--ink-faint);
+}
+
 .ticket-source-card {
   display: flex;
   justify-content: space-between;
@@ -1838,6 +2130,40 @@ textarea {
 /* ---------- Responsive ---------- */
 
 @media (max-width: 900px) {
+  .home-shell {
+    padding: 1rem;
+  }
+
+  .home-hero {
+    min-height: auto;
+    gap: 1.35rem;
+  }
+
+  .home-nav {
+    align-items: flex-start;
+  }
+
+  .home-hero-grid,
+  .home-capability-row {
+    grid-template-columns: 1fr;
+  }
+
+  .home-hero-grid {
+    gap: 1.2rem;
+  }
+
+  .home-copy h1 {
+    font-size: 2.45rem;
+  }
+
+  .home-console {
+    min-height: auto;
+  }
+
+  .home-signal-row {
+    flex-wrap: wrap;
+  }
+
   .app-shell {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto auto auto;
