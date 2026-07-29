@@ -71,6 +71,7 @@ class ExternalHandoffServiceTest {
                 "project-analyst-agent",
                 "impact-analysis",
                 "task-1",
+                null,
                 Instant.now().toString(),
                 Map.of("risk_level", "medium"),
                 List.of(new Evidence("charge_card is affected", "payments.py:1")),

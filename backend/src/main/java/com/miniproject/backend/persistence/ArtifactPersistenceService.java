@@ -101,7 +101,7 @@ public class ArtifactPersistenceService {
                 .map(ev -> new Evidence(ev.getClaim(), ev.getSource()))
                 .toList();
         return new Artifact<>("artifact.v1", entity.getAgent(), entity.getSkill(), entity.getTaskId(),
-                entity.getCreatedAt().toString(), result, evidence, entity.isReviewed());
+                entity.getParentTaskId(), entity.getCreatedAt().toString(), result, evidence, entity.isReviewed());
     }
 
     public record ArtifactSummary(

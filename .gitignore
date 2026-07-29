@@ -4,6 +4,7 @@ target/
 *.jar
 !.mvn/wrapper/maven-wrapper.jar
 backend/data/
+backend-run.*.log
 
 # Python
 __pycache__/

@@ -9,6 +9,10 @@ public record JiraTicketImportResponse(
         String acceptanceCriteria,
         String comments,
         String source,
+        String sourceType,
+        String sourceName,
+        String sourceUrl,
+        String receivedAt,
         boolean dryRun,
         String message) {
 }

@@ -78,6 +78,10 @@ const CHIPS = {
 };
 
 const EMPTY_TICKET = {
+  sourceType: "Manual",
+  sourceName: "Manual entry",
+  sourceUrl: "",
+  receivedAt: "",
   ticketKey: "",
   ticketTitle: "",
   priority: "Medium",
@@ -88,6 +92,10 @@ const EMPTY_TICKET = {
 };
 
 const SAMPLE_TICKET = {
+  sourceType: "Jira",
+  sourceName: "Jira sample import",
+  sourceUrl: "https://jira.example.local/browse/MBC-204",
+  receivedAt: "Today 09:10",
   ticketKey: "MBC-204",
   ticketTitle: "Allow donors to filter available aid requests by city and urgency",
   priority: "High",
@@ -100,12 +108,72 @@ const SAMPLE_TICKET = {
     "Need to confirm whether filters should update through page reload or AJAX, and whether the same filter should apply to admin monitoring later.",
 };
 
+const EMAIL_TICKET = {
+  sourceType: "Email",
+  sourceName: "Stakeholder email",
+  sourceUrl: "",
+  receivedAt: "Today 10:35",
+  ticketKey: "MBC-211",
+  ticketTitle: "Notify collection center admins when urgent aid requests are approved",
+  priority: "Medium",
+  reporter: "Collection Center Admin",
+  description:
+    "Collection center admin should receive a notification when an urgent aid request is approved and ready for assignment.",
+  acceptanceCriteria:
+    "Given an urgent aid request is approved, when the approval is saved, then relevant collection center admins are notified.",
+  comments:
+    "Stakeholder is not sure whether notification should be email, in-app, or both. Need to confirm target admins by city or collection center.",
+};
+
+const MEETING_NOTE_TICKET = {
+  sourceType: "Meeting Notes",
+  sourceName: "Sprint planning notes",
+  sourceUrl: "",
+  receivedAt: "Yesterday 16:20",
+  ticketKey: "MBC-218",
+  ticketTitle: "Improve flood report verification before public display",
+  priority: "High",
+  reporter: "Product Owner",
+  description:
+    "Reports submitted by victims should be verified before they appear on the public flood map.",
+  acceptanceCriteria:
+    "Given a victim submits a flood report, when the report is not verified, then it should not be visible on the public map.",
+  comments:
+    "Need to clarify who can verify reports and whether existing public reports require migration or review.",
+};
+
+const ANALYST_INBOX_ITEMS = [
+  {
+    id: "jira-mbc-204",
+    source: "Jira",
+    status: "Ready for triage",
+    age: "Today",
+    ticket: SAMPLE_TICKET,
+  },
+  {
+    id: "email-mbc-211",
+    source: "Email",
+    status: "Needs clarification",
+    age: "Today",
+    ticket: EMAIL_TICKET,
+  },
+  {
+    id: "meeting-mbc-218",
+    source: "Meeting Notes",
+    status: "New requirement",
+    age: "Yesterday",
+    ticket: MEETING_NOTE_TICKET,
+  },
+];
+
 const TARGET_PROJECT = {
   name: "MyBanjirCare",
   framework: "Laravel 10 / PHP 8.1",
   source: "github.com/ling0214/MyBanjirCare",
   modules: ["Aid Request", "Donation", "Flood Report", "Collection Center", "Auth / OTP"],
 };
+
+const QUICK_ACTION_EVENT = "analyst-workbench:quick-action";
 
 function App() {
   const [backendStatus, setBackendStatus] = useState("checking");
@@ -251,19 +319,55 @@ function LegacyWorkbench() {
 }
 
 function TopBar({ status }) {
+  function quickAction(action) {
+    window.dispatchEvent(new CustomEvent(QUICK_ACTION_EVENT, { detail: { action } }));
+  }
+
   return (
     <header className="topbar">
-      <div className="brand-mark">H</div>
+      <div className="brand-mark">
+        <LogoMark />
+      </div>
       <div>
         <div className="brand-name">Analyst Workbench</div>
         <div className="brand-subtitle">Software Analyst workflow assistant</div>
       </div>
       <div className="topbar-spacer" />
+      <nav className="topbar-actions" aria-label="Quick actions">
+        <button type="button" onClick={() => quickAction("inbox")}>
+          Inbox
+        </button>
+        <button type="button" onClick={() => quickAction("import-jira")}>
+          Import Jira
+        </button>
+        <button type="button" onClick={() => quickAction("manual-intake")}>
+          Manual Intake
+        </button>
+        <button type="button" onClick={() => quickAction("connect-apps")}>
+          Connect Apps
+        </button>
+      </nav>
       <span className={`connection ${status}`}>
         <span />
         {status === "up" ? "Backend up" : status === "down" ? "Backend down" : "Checking backend"}
       </span>
     </header>
+  );
+}
+
+/**
+ * Brand mark: an "A" (Analyst) monogram whose crossbar doubles as a
+ * checkmark — the review-gate/evidence discipline that runs through every
+ * skill in this workflow, not just a generic initial. Matches public/logo.svg
+ * (used for the favicon); this inline copy renders crisply at any size
+ * without an extra network request.
+ */
+function LogoMark() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+      <path d="M28 78 L50 22 L72 78" stroke="#ffffff" strokeWidth="11" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M37 60 L45 68 L65 48" stroke="#ffffff" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 
@@ -298,14 +402,15 @@ function WorkflowRail({ step }) {
  * analyst's workflow, not which role is "allowed" to click what.
  */
 const WORKFLOW_STEPS = [
-  ["requirement", "Ticket Intake"],
+  ["inbox", "Analyst Inbox"],
+  ["requirement", "Ticket Review"],
   ["impact", "Impact Analysis"],
   ["test", "Test Scenarios"],
   ["report", "Handoff Summary"],
 ];
 
 function AnalystWorkflow() {
-  const [phase, setPhase] = useState("requirement");
+  const [phase, setPhase] = useState("inbox");
   const [ticket, setTicket] = useState(EMPTY_TICKET);
   const [reqArtifact, setReqArtifact] = useState(null);
   const [impactArtifact, setImpactArtifact] = useState(null);
@@ -314,20 +419,66 @@ function AnalystWorkflow() {
   const [testArtifacts, setTestArtifacts] = useState([]);
   const [testScopeArtifacts, setTestScopeArtifacts] = useState({});
   const [summaryArtifact, setSummaryArtifact] = useState(null);
+  const [summaryHandoffs, setSummaryHandoffs] = useState([]);
   const startedImpactRef = useRef(false);
 
   const reqStatus = reqArtifact ? getRequirementStatus(reqArtifact) : null;
 
-  function reset() {
-    setPhase("requirement");
-    setTicket(EMPTY_TICKET);
+  useEffect(() => {
+    function focusInboxTarget(id) {
+      window.setTimeout(() => {
+        document.getElementById(id)?.focus();
+      }, 80);
+    }
+
+    function handleQuickAction(event) {
+      const action = event.detail?.action;
+      if (action === "inbox") {
+        setPhase("inbox");
+        return;
+      }
+      if (action === "import-jira") {
+        setPhase("inbox");
+        focusInboxTarget("jira-import-input");
+        return;
+      }
+      if (action === "manual-intake") {
+        selectInboxTicket({ ...EMPTY_TICKET, receivedAt: "Manual draft" });
+        return;
+      }
+      if (action === "connect-apps") {
+        setPhase("inbox");
+        window.setTimeout(() => {
+          document.getElementById("platform-command-center")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 80);
+      }
+    }
+
+    window.addEventListener(QUICK_ACTION_EVENT, handleQuickAction);
+    return () => window.removeEventListener(QUICK_ACTION_EVENT, handleQuickAction);
+  }, []);
+
+  function clearWorkflowArtifacts() {
     setReqArtifact(null);
     setImpactArtifact(null);
     setImpactError("");
     setTestArtifacts([]);
     setTestScopeArtifacts({});
     setSummaryArtifact(null);
+    setSummaryHandoffs([]);
     startedImpactRef.current = false;
+  }
+
+  function reset() {
+    setPhase("inbox");
+    setTicket(EMPTY_TICKET);
+    clearWorkflowArtifacts();
+  }
+
+  function selectInboxTicket(nextTicket) {
+    setTicket({ ...EMPTY_TICKET, ...nextTicket });
+    clearWorkflowArtifacts();
+    setPhase("requirement");
   }
 
   async function runImpactAnalysis() {
@@ -406,11 +557,26 @@ function AnalystWorkflow() {
       },
     });
     setSummaryArtifact(next);
+    setSummaryHandoffs([]);
   }
 
   async function reviewSummary() {
     const next = await api(`/api/artifacts/${summaryArtifact.task_id}/review`, { method: "PATCH" });
     setSummaryArtifact(next);
+    await loadSummaryHandoffs(next.task_id);
+  }
+
+  async function loadSummaryHandoffs(taskId = summaryArtifact?.task_id) {
+    if (!taskId) {
+      setSummaryHandoffs([]);
+      return;
+    }
+    try {
+      const items = await api(`/api/artifacts/${taskId}/external-handoffs`);
+      setSummaryHandoffs(items);
+    } catch {
+      setSummaryHandoffs([]);
+    }
   }
 
   return (
@@ -418,17 +584,26 @@ function AnalystWorkflow() {
       <AnalystWorkflowRail
         phase={phase}
         reqStatus={reqStatus}
+        selectedTicket={ticket}
         impactReviewed={Boolean(impactArtifact?.reviewed)}
         testCount={testArtifacts.length}
         onReset={reset}
       />
       <main className="workspace">
+        {phase === "inbox" && (
+          <AnalystInboxPhase
+            items={ANALYST_INBOX_ITEMS}
+            onSelect={selectInboxTicket}
+            onManual={() => selectInboxTicket({ ...EMPTY_TICKET, receivedAt: "Manual draft" })}
+          />
+        )}
         {phase === "requirement" && (
           <RequirementPhase
             ticket={ticket}
             onTicketChange={setTicket}
             reqArtifact={reqArtifact}
             reqStatus={reqStatus}
+            onBackToInbox={reset}
             onArtifact={setReqArtifact}
             onReview={reviewRequirement}
           />
@@ -464,8 +639,10 @@ function AnalystWorkflow() {
             testArtifacts={testArtifacts}
             testScopeArtifacts={testScopeArtifacts}
             summaryArtifact={summaryArtifact}
+            summaryHandoffs={summaryHandoffs}
             onGenerateSummary={generateSummary}
             onReviewSummary={reviewSummary}
+            onReloadSummaryHandoffs={loadSummaryHandoffs}
             onRestart={reset}
           />
         )}
@@ -474,10 +651,11 @@ function AnalystWorkflow() {
   );
 }
 
-function AnalystWorkflowRail({ phase, reqStatus, impactReviewed, testCount, onReset }) {
+function AnalystWorkflowRail({ phase, reqStatus, selectedTicket, impactReviewed, testCount, onReset }) {
   const order = WORKFLOW_STEPS.map(([id]) => id);
   const currentIndex = order.indexOf(phase);
   const subtitle = {
+    inbox: phase === "inbox" ? "Select work item" : selectedTicket.ticketKey || selectedTicket.sourceType || "Selected",
     requirement: reqStatus ? formatStatus(reqStatus) : "Not started",
     impact: impactReviewed ? "Reviewed" : currentIndex >= order.indexOf("impact") ? "In review" : "Pending",
     test: testCount > 0 ? `${testCount} scenario set${testCount === 1 ? "" : "s"}` : "Pending",
@@ -500,26 +678,504 @@ function AnalystWorkflowRail({ phase, reqStatus, impactReviewed, testCount, onRe
       })}
       <div className="rail-divider" />
       <div className="rail-note">
-        One continuous ticket intake to impact to test to report pipeline. Clarification and review gates run inline before you can move to the next step.
+        One continuous external work item to requirement to impact to test to report pipeline. Clarification and review gates run inline before you can move to the next step.
       </div>
       <button className="btn ghost compact rail-reset" type="button" onClick={onReset}>
         Start new analysis
       </button>
+      <AnalystCalendar />
     </aside>
   );
 }
 
-function RequirementPhase({ ticket, onTicketChange, reqArtifact, reqStatus, onArtifact, onReview }) {
+/**
+ * Google Calendar-style agenda list, not a month grid — the rail is 292px
+ * wide, an agenda view is what Google Calendar itself falls back to at this
+ * width. Sample events for now (per the user's own scoping call: build the
+ * widget and notification behavior first, wire real Google Calendar OAuth
+ * later once there's something worth syncing against). The red dot marks
+ * "new since last check" the same way an inbox unread marker would.
+ */
+const CALENDAR_EVENTS = [
+  { id: "cal-1", day: "Today", time: "10:00", title: "Sprint planning", withWho: "Dev + QA", isNew: true },
+  { id: "cal-2", day: "Today", time: "14:30", title: "Clarify MBC-211 with stakeholder", withWho: "Ops Lead", isNew: true },
+  { id: "cal-3", day: "Tomorrow", time: "09:30", title: "Requirement review", withWho: "Product Owner", isNew: false },
+  { id: "cal-4", day: "Thu", time: "15:00", title: "QA handoff sync", withWho: "Tester", isNew: false },
+];
+
+/** "2026-07-30" (all-day) or a full ISO datetime — Google Calendar sends either shape. */
+function formatEventDayTime(value) {
+  if (!value) {
+    return { day: "", time: "" };
+  }
+  const isAllDay = value.length === 10;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return { day: value, time: "" };
+  }
+  const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diffDays = Math.round((startOfDay(date) - startOfDay(new Date())) / 86400000);
+  let day;
+  if (diffDays === 0) day = "Today";
+  else if (diffDays === 1) day = "Tomorrow";
+  else if (diffDays > 1 && diffDays < 7) day = date.toLocaleDateString([], { weekday: "short" });
+  else day = date.toLocaleDateString([], { month: "short", day: "numeric" });
+  const time = isAllDay ? "All day" : date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  return { day, time };
+}
+
+function AnalystCalendar() {
+  const [events, setEvents] = useState(CALENDAR_EVENTS);
+  const [live, setLive] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api("/api/integrations/google/status")
+      .then((status) => {
+        if (cancelled || !status.connected) return undefined;
+        return api("/api/integrations/google/calendar/events");
+      })
+      .then((items) => {
+        if (cancelled || !items) return;
+        setEvents(
+          items.map((item) => {
+            const { day, time } = formatEventDayTime(item.start_time);
+            return {
+              id: item.id,
+              day,
+              time,
+              title: item.title,
+              withWho: item.attendees || (item.meet_link ? "Google Meet" : ""),
+              isNew: item.recently_updated,
+            };
+          })
+        );
+        setLive(true);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const newCount = events.filter((event) => event.isNew).length;
+  return (
+    <div className="analyst-calendar">
+      <div className="analyst-calendar-header">
+        <span className="rail-label">Calendar</span>
+        {newCount > 0 && <span className="calendar-badge">{newCount} new</span>}
+      </div>
+      {events.length === 0 ? (
+        <p className="calendar-note">No upcoming events found.</p>
+      ) : (
+        <ul className="calendar-event-list">
+          {events.map((event) => (
+            <li key={event.id} className="calendar-event">
+              {event.isNew && <span className="calendar-dot" title="New since last check" />}
+              <div className="calendar-event-body">
+                <div className="calendar-event-time">
+                  {event.day} · {event.time}
+                </div>
+                <div className="calendar-event-title">{event.title}</div>
+                {event.withWho && <div className="calendar-event-with">{event.withWho}</div>}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="calendar-note">
+        {live
+          ? "Live from your connected Google Calendar."
+          : "Sample schedule. Connect Google Calendar to sync real invites and get live notifications here."}
+      </p>
+    </div>
+  );
+}
+
+const SAMPLE_CSV_ROW =
+  "key,title,priority,reporter,description,acceptance criteria,comments\n" +
+  "MBC-231,Export approved aid requests to Excel,Medium,Ops Lead," +
+  "Ops team wants a CSV export of approved aid requests for the weekly report.," +
+  "Given approved aid requests exist, when the Ops Lead exports, then a CSV with city/category/urgency is downloaded.," +
+  "Confirm whether donors' contact info should be excluded from the export.";
+
+/**
+ * Mission-control strip: one place to see whether any connected platform
+ * needs attention, instead of tab-switching between Jira/email/Zoom/Meet/
+ * Calendar to check. Jira is marked connected because it really is (live
+ * API token). Email/Meet/Calendar all ride the same Google OAuth connection
+ * (Calendar + Gmail scopes — a Meet event's join link lives on the Calendar
+ * event itself, there's no separate personal "list my Meet meetings" API),
+ * so their tiles reflect one /api/integrations/google/status check, and
+ * "Connect" is a real browser navigation to the OAuth flow, not a message.
+ * Zoom stays honestly "Not connected" — that needs its own separate OAuth
+ * app from Zoom App Marketplace that nothing here is wired to yet, so
+ * "Connect" explains that instead of pretending to be live.
+ */
+const PLATFORM_STATUS = [
+  { id: "jira", label: "Jira", google: false, detail: "KAN project synced today", metric: "3 tickets", isNew: false },
+  { id: "email", label: "Email", google: true, detail: "Requirement threads from stakeholders", metric: "2 unread", isNew: true },
+  { id: "zoom", label: "Zoom", google: false, detail: "Meeting notes after OAuth setup", metric: "offline", isNew: false },
+  { id: "meet", label: "Google Meet", google: true, detail: "Meet links from Calendar events", metric: "auto-log", isNew: false },
+  { id: "calendar", label: "Calendar", google: true, detail: "Upcoming requirement sessions", metric: "2 invites", isNew: true },
+];
+
+function PlatformStatusStrip() {
+  const [connectMessage, setConnectMessage] = useState("");
+  const [googleConnected, setGoogleConnected] = useState(false);
+  const [emailUnread, setEmailUnread] = useState(null);
+  const [calendarCount, setCalendarCount] = useState(null);
+
+  useEffect(() => {
+    api("/api/integrations/google/status")
+      .then((status) => setGoogleConnected(Boolean(status.connected)))
+      .catch(() => setGoogleConnected(false));
+  }, []);
+
+  useEffect(() => {
+    if (!googleConnected) return;
+    api("/api/integrations/google/gmail/summary")
+      .then((summary) => setEmailUnread(summary.unread_count))
+      .catch(() => {});
+    api("/api/integrations/google/calendar/events")
+      .then((events) => setCalendarCount(events.length))
+      .catch(() => {});
+  }, [googleConnected]);
+
+  function isConnected(platform) {
+    if (platform.id === "jira") return true;
+    if (platform.google) return googleConnected;
+    return false;
+  }
+
+  function isNew(platform) {
+    if (platform.id === "email" && emailUnread !== null) return emailUnread > 0;
+    if (platform.id === "calendar" && calendarCount !== null) return calendarCount > 0;
+    return platform.isNew;
+  }
+
+  function tileMetric(platform) {
+    if (platform.id === "email" && emailUnread !== null) return `${emailUnread} unread`;
+    if (platform.id === "calendar" && calendarCount !== null) return `${calendarCount} upcoming`;
+    return platform.metric;
+  }
+
+  function tileDetail(platform) {
+    if (platform.id === "email" && emailUnread !== null) {
+      return emailUnread > 0 ? `${emailUnread} unread emails, live from Gmail` : "Inbox zero — nothing waiting";
+    }
+    if (platform.id === "calendar" && calendarCount !== null) {
+      return calendarCount > 0
+        ? `${calendarCount} upcoming event${calendarCount === 1 ? "" : "s"}, live from Google Calendar`
+        : "No upcoming events";
+    }
+    return platform.detail;
+  }
+
+  function handleConnect(platform) {
+    if (platform.google) {
+      window.location.href = `${API_BASE}/api/integrations/google/connect`;
+      return;
+    }
+    setConnectMessage(
+      `${platform.label}: needs an OAuth app (with API credentials) created for this account before it can connect for real.`
+    );
+  }
+
+  return (
+    <section id="platform-command-center" className="command-center">
+      <div className="command-center-head">
+        <div>
+          <div className="eyebrow">Unified monitoring</div>
+          <h2>Analyst control center</h2>
+          <p>Connected platforms are watched in one place before the workflow turns a work item into analysis, test scope, and handoff.</p>
+        </div>
+        <div className="command-metrics">
+          <div>
+            <strong>{PLATFORM_STATUS.filter((platform) => isConnected(platform)).length}</strong>
+            <span>Connected</span>
+          </div>
+          <div>
+            <strong>{PLATFORM_STATUS.filter((platform) => isNew(platform)).length}</strong>
+            <span>New signals</span>
+          </div>
+          <div>
+            <strong>1</strong>
+            <span>Inbox</span>
+          </div>
+        </div>
+      </div>
+      <div className="platform-strip">
+        {PLATFORM_STATUS.map((platform) => {
+          const connected = isConnected(platform);
+          return (
+            <div key={platform.id} className={`platform-tile ${platform.id} ${connected ? "connected" : ""}`}>
+              <PlatformLogo platform={platform.id} className="platform-watermark" />
+              <div className="platform-tile-top">
+                <span className={`platform-icon ${platform.id}`}>
+                  <PlatformLogo platform={platform.id} />
+                </span>
+                <div>
+                  <span className="platform-tile-name">{platform.label}</span>
+                  <span className="platform-tile-metric">{tileMetric(platform)}</span>
+                </div>
+                {isNew(platform) && <span className="activity-dot" title="New activity" />}
+              </div>
+              <span className={`status-pill ${connected ? "reviewed" : "unreviewed"}`}>
+                {connected ? "Connected" : "Not connected"}
+              </span>
+              <p className="platform-tile-detail">{tileDetail(platform)}</p>
+              {!connected && (
+                <button className="btn ghost compact" type="button" onClick={() => handleConnect(platform)}>
+                  Connect
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {connectMessage && <div className="info-box platform-strip-message">{connectMessage}</div>}
+    </section>
+  );
+}
+
+function PlatformLogo({ platform, className = "" }) {
+  if (platform === "jira") {
+    return (
+      <svg className={className} viewBox="0 0 48 48" aria-hidden="true">
+        <path fill="#2684ff" d="M23.8 8.1 8.3 23.6a3.6 3.6 0 0 0 0 5.1l10.6 10.6 5.8-5.8-8-8 12.9-12.9-5.8-4.5Z" />
+        <path fill="#0052cc" d="m24.2 39.9 15.5-15.5a3.6 3.6 0 0 0 0-5.1L29.1 8.7l-5.8 5.8 8 8-12.9 12.9 5.8 4.5Z" />
+      </svg>
+    );
+  }
+  if (platform === "email") {
+    return (
+      <svg className={className} viewBox="0 0 48 48" aria-hidden="true">
+        <path fill="#ea4335" d="M8 14.5 24 26.5 40 14.5v20.2c0 2-1.5 3.6-3.5 3.6h-25c-2 0-3.5-1.6-3.5-3.6V14.5Z" />
+        <path fill="#fbbc04" d="M8 14.5 24 26.5 8 38.3V14.5Z" />
+        <path fill="#34a853" d="M40 14.5 24 26.5 40 38.3V14.5Z" />
+        <path fill="#4285f4" d="M11.5 9.7h25c2 0 3.5 1.6 3.5 3.6v1.2L24 26.5 8 14.5v-1.2c0-2 1.5-3.6 3.5-3.6Z" />
+        <path fill="#ffffff" opacity=".9" d="M12 15.3 24 24.4l12-9.1v18.8H12V15.3Z" />
+      </svg>
+    );
+  }
+  if (platform === "zoom") {
+    return (
+      <svg className={className} viewBox="0 0 48 48" aria-hidden="true">
+        <rect x="6" y="9" width="36" height="30" rx="10" fill="#2d8cff" />
+        <rect x="13" y="17" width="16" height="14" rx="3" fill="#ffffff" />
+        <path fill="#ffffff" d="M29 20.5 36 17v14l-7-3.5v-7Z" />
+      </svg>
+    );
+  }
+  if (platform === "meet") {
+    return (
+      <svg className={className} viewBox="0 0 48 48" aria-hidden="true">
+        <path fill="#00ac47" d="M8 15.5c0-3 2.4-5.5 5.5-5.5H28v28H13.5A5.5 5.5 0 0 1 8 32.5v-17Z" />
+        <path fill="#00832d" d="M28 20.5 40 13v22l-12-7.5v-7Z" />
+        <path fill="#ffba00" d="M8 24h20v14H13.5A5.5 5.5 0 0 1 8 32.5V24Z" />
+        <path fill="#0066da" d="M13.5 10H28v14H8v-8.5c0-3 2.4-5.5 5.5-5.5Z" />
+        <path fill="#ffffff" opacity=".95" d="M15 17h11v14H15z" />
+      </svg>
+    );
+  }
+  return (
+    <svg className={className} viewBox="0 0 48 48" aria-hidden="true">
+      <rect x="9" y="8" width="30" height="32" rx="5" fill="#4285f4" />
+      <path fill="#34a853" d="M9 16h30v7H9z" />
+      <path fill="#fbbc04" d="M9 23h30v7H9z" />
+      <path fill="#ea4335" d="M9 8h30v8H9z" />
+      <rect x="14" y="19" width="20" height="17" rx="2" fill="#ffffff" />
+      <text x="24" y="32" textAnchor="middle" fontSize="12" fontWeight="800" fill="#3c4043">
+        31
+      </text>
+    </svg>
+  );
+}
+
+function AnalystInboxPhase({ items, onSelect, onManual }) {
+  const [importKey, setImportKey] = useState("MBC-204");
+  const [importedItems, setImportedItems] = useState([]);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importMessage, setImportMessage] = useState("");
+  const [error, setError] = useState("");
+  const [csvText, setCsvText] = useState("");
+  const [csvLoading, setCsvLoading] = useState(false);
+  const [csvMessage, setCsvMessage] = useState("");
+  const [csvError, setCsvError] = useState("");
+  const allItems = [...importedItems, ...items];
+
+  function recordImportedItem(ticket, source, status) {
+    const importedItem = {
+      id: `imported-${source}-${ticket.ticketKey || Date.now()}`,
+      source,
+      status,
+      age: ticket.receivedAt || "Imported",
+      ticket,
+    };
+    setImportedItems((prev) => [importedItem, ...prev.filter((item) => item.id !== importedItem.id)]);
+    onSelect(ticket);
+  }
+
+  async function importJiraTicket() {
+    setError("");
+    setImportMessage("");
+    if (!importKey.trim()) {
+      setError("Jira ticket key or URL is required.");
+      return;
+    }
+    setImportLoading(true);
+    try {
+      const response = await api("/api/integrations/jira/import", {
+        method: "POST",
+        body: importKey.includes("/")
+          ? { ticket_url: importKey }
+          : { ticket_key: importKey },
+      });
+      const ticket = ticketFromImportResponse(response);
+      recordImportedItem(ticket, ticket.sourceType || "Jira", response.dry_run ? "Dry-run import" : "Live Jira import");
+      setImportMessage(response.message || "Jira ticket imported into Analyst Inbox.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setImportLoading(false);
+    }
+  }
+
+  async function importCsvTicket() {
+    setCsvError("");
+    setCsvMessage("");
+    if (!csvText.trim()) {
+      setCsvError("Paste a CSV header row and one data row first.");
+      return;
+    }
+    setCsvLoading(true);
+    try {
+      const response = await api("/api/integrations/csv/import", {
+        method: "POST",
+        body: { csv_text: csvText },
+      });
+      const ticket = ticketFromImportResponse(response);
+      recordImportedItem(ticket, "CSV", "Spreadsheet import");
+      setCsvMessage(response.message || "Ticket imported from CSV.");
+    } catch (err) {
+      setCsvError(err.message);
+    } finally {
+      setCsvLoading(false);
+    }
+  }
+
+  return (
+    <section className="screen">
+      <PlatformStatusStrip />
+      <HeaderBlock
+        eyebrow="Step 1 - Analyst Inbox"
+        title="Select an incoming work item"
+        subtitle="Review requests from Jira, email, meeting notes, or manual entry before the AI analysis workflow starts."
+      />
+      <div className="inbox-command-bar">
+        <div className="inbox-command-copy">
+          <strong>Live work queue</strong>
+          <span>{allItems.length} mapped items from connected and sample sources</span>
+        </div>
+        <div className="inbox-command-tools">
+          <span>Ready for triage</span>
+          <span>Clarification needed</span>
+          <span>Meeting notes</span>
+        </div>
+      </div>
+      <div className="inbox-layout">
+        <section className="inbox-list">
+          {allItems.map((item) => (
+            <button key={item.id} className="inbox-item" type="button" onClick={() => onSelect(item.ticket)}>
+              <div className="inbox-item-top">
+                <span className="source-pill">{item.source}</span>
+                <span>{item.age}</span>
+              </div>
+              <strong>{item.ticket.ticketTitle}</strong>
+              <p>{item.ticket.description}</p>
+              <div className="inbox-item-meta">
+                <span>{item.ticket.ticketKey}</span>
+                <span>{item.ticket.priority}</span>
+                <span>{item.status}</span>
+              </div>
+            </button>
+          ))}
+        </section>
+        <section className="inbox-side-panel">
+          <label className="field-label">Connector concept</label>
+          <h2>Hermes-style intake</h2>
+          <p>
+            External sources become one analyst inbox. The analyst selects a work item, reviews the mapped ticket fields,
+            then runs requirement analysis, clarification, impact analysis, testing scope, and handoff.
+          </p>
+          <div className="connector-stack">
+            <span>Jira</span>
+            <span>Email</span>
+            <span>Meeting Notes</span>
+            <span>CSV / Excel</span>
+            <span>Manual</span>
+          </div>
+          <div className="inbox-import-box">
+            <label className="field-label">Import Jira ticket</label>
+            <div className="jira-import-controls">
+              <input
+                id="jira-import-input"
+                type="text"
+                value={importKey}
+                onChange={(event) => setImportKey(event.target.value)}
+                placeholder="MBC-204 or Jira ticket URL"
+              />
+              <button className="btn primary compact" type="button" disabled={importLoading} onClick={importJiraTicket}>
+                {importLoading ? "Importing..." : "Import"}
+              </button>
+            </div>
+            {importMessage && <div className="info-box">{importMessage}</div>}
+            {error && <ErrorBox message={error} />}
+          </div>
+          <div className="inbox-import-box">
+            <div className="ticket-form-actions">
+              <label className="field-label">Import from CSV / Excel</label>
+              <button className="btn ghost compact" type="button" onClick={() => setCsvText(SAMPLE_CSV_ROW)}>
+                Load sample row
+              </button>
+            </div>
+            <p>Paste a header row plus one data row, exported from Excel or Google Sheets.</p>
+            <textarea
+              className="compact-textarea"
+              value={csvText}
+              onChange={(event) => setCsvText(event.target.value)}
+              placeholder={"key,title,priority,reporter,description,acceptance criteria,comments\nMBC-231,..."}
+            />
+            <div className="action-row">
+              <button className="btn primary compact" type="button" disabled={csvLoading} onClick={importCsvTicket}>
+                {csvLoading ? "Importing..." : "Import row"}
+              </button>
+            </div>
+            {csvMessage && <div className="info-box">{csvMessage}</div>}
+            {csvError && <ErrorBox message={csvError} />}
+          </div>
+          <button className="btn ghost" type="button" onClick={onManual}>
+            Start manual intake
+          </button>
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function RequirementPhase({ ticket, onTicketChange, reqArtifact, reqStatus, onBackToInbox, onArtifact, onReview }) {
   const reviewed = Boolean(reqArtifact?.reviewed);
   const reviewBlocked = reqStatus === "NEEDS_CLARIFICATION";
   return (
     <section className="screen">
       <HeaderBlock
-        eyebrow="Step 1 - Ticket Intake"
-        title="Capture the change request ticket"
-        subtitle="Enter the ticket details an analyst normally receives before clarification, impact analysis, testing scope, and handoff."
+        eyebrow="Step 2 - Ticket Review"
+        title="Review the imported ticket"
+        subtitle="Confirm the mapped ticket fields before clarification, impact analysis, testing scope, and handoff."
       />
       {!reqArtifact && <ProjectContextCard />}
+      {!reqArtifact && <TicketSourceCard ticket={ticket} onBack={onBackToInbox} />}
       {!reqArtifact && <TicketIntakeForm ticket={ticket} onChange={onTicketChange} onArtifact={onArtifact} />}
       {reqArtifact && (
         <>
@@ -532,6 +1188,30 @@ function RequirementPhase({ ticket, onTicketChange, reqArtifact, reqStatus, onAr
           </div>
         </>
       )}
+    </section>
+  );
+}
+
+function TicketSourceCard({ ticket, onBack }) {
+  return (
+    <section className="ticket-source-card">
+      <div>
+        <label className="field-label">Selected source</label>
+        <h2>{ticket.sourceType || "Manual"}</h2>
+        <p>{ticket.sourceName || "Manual entry"}</p>
+      </div>
+      <div className="ticket-source-meta">
+        {ticket.ticketKey && <span>{ticket.ticketKey}</span>}
+        {ticket.receivedAt && <span>{ticket.receivedAt}</span>}
+        {ticket.sourceUrl && (
+          <a href={ticket.sourceUrl} target="_blank" rel="noreferrer">
+            Open source
+          </a>
+        )}
+        <button className="btn ghost compact" type="button" onClick={onBack}>
+          Back to inbox
+        </button>
+      </div>
     </section>
   );
 }
@@ -585,15 +1265,7 @@ function TicketIntakeForm({ ticket, onChange, onArtifact }) {
           ? { ticket_url: importKey }
           : { ticket_key: importKey },
       });
-      onChange({
-        ticketKey: response.ticket_key || "",
-        ticketTitle: response.ticket_title || "",
-        priority: response.priority || "Medium",
-        reporter: response.reporter || "",
-        description: response.description || "",
-        acceptanceCriteria: response.acceptance_criteria || "",
-        comments: response.comments || "",
-      });
+      onChange(ticketFromImportResponse(response));
       setImportMessage(response.message || "Jira ticket imported.");
     } catch (err) {
       setError(err.message);
@@ -618,6 +1290,10 @@ function TicketIntakeForm({ ticket, onChange, onArtifact }) {
           ticket_title: ticket.ticketTitle,
           priority: ticket.priority,
           reporter: ticket.reporter,
+          source_type: ticket.sourceType,
+          source_name: ticket.sourceName,
+          source_url: ticket.sourceUrl,
+          received_at: ticket.receivedAt,
           description: ticket.description,
           acceptance_criteria: ticket.acceptanceCriteria,
           comments: ticket.comments,
@@ -741,7 +1417,7 @@ function ImpactPhase({ loading, error, artifact, onRetry, onReview, onBack, onNe
   return (
     <section className="screen">
       <HeaderBlock
-        eyebrow="Step 2 · Impact Analysis"
+        eyebrow="Step 3 - Impact Analysis"
         title="Scope the blast radius"
         subtitle="Runs automatically against the reviewed requirement text, grounded in the project graph via MCP."
       />
@@ -794,7 +1470,7 @@ function TestPhase({ impactArtifact, testArtifacts, testScopeArtifacts, onGenera
   return (
     <section className="screen">
       <HeaderBlock
-        eyebrow="Step 3 · Test Scenarios"
+        eyebrow="Step 4 - Test Scenarios"
         title="Prepare the testing scope"
         subtitle="Generate scenarios from impacted modules, then accept, reject, edit, and prioritize cases before handoff."
       />
@@ -849,7 +1525,19 @@ function TestPhase({ impactArtifact, testArtifacts, testScopeArtifacts, onGenera
   );
 }
 
-function ReportPhase({ ticket, reqArtifact, impactArtifact, testArtifacts, testScopeArtifacts, summaryArtifact, onGenerateSummary, onReviewSummary, onRestart }) {
+function ReportPhase({
+  ticket,
+  reqArtifact,
+  impactArtifact,
+  testArtifacts,
+  testScopeArtifacts,
+  summaryArtifact,
+  summaryHandoffs,
+  onGenerateSummary,
+  onReviewSummary,
+  onReloadSummaryHandoffs,
+  onRestart,
+}) {
   const reqResult = reqArtifact?.result || {};
   const impactResult = impactArtifact?.result || {};
   const ticketText = formatTicketInput(ticket);
@@ -859,7 +1547,7 @@ function ReportPhase({ ticket, reqArtifact, impactArtifact, testArtifacts, testS
   return (
     <section className="screen">
       <HeaderBlock
-        eyebrow="Step 4 - Handoff Summary"
+        eyebrow="Step 5 - Handoff Summary"
         title="Compiled handoff summary"
         subtitle="Generate a reviewable artifact that can be shared with PM, developer, tester, or supervisor."
       />
@@ -931,6 +1619,19 @@ function ReportPhase({ ticket, reqArtifact, impactArtifact, testArtifacts, testS
             </div>
           </div>
           <HandoffSummaryReport result={summaryArtifact.result || {}} />
+          {summaryArtifact.reviewed ? (
+            <ExternalHandoff
+              artifact={summaryArtifact}
+              handoffs={summaryHandoffs}
+              onReload={() => onReloadSummaryHandoffs(summaryArtifact.task_id)}
+              initialSummary="Reviewed analyst handoff summary"
+            />
+          ) : (
+            <section className="handoff-panel">
+              <h3>External handoff</h3>
+              <p className="muted">Mark the handoff summary as reviewed before creating a Jira issue or posting to a PR.</p>
+            </section>
+          )}
           <details className="raw">
             <summary>View raw handoff-summary artifact</summary>
             <pre>{JSON.stringify(summaryArtifact, null, 2)}</pre>
@@ -1250,6 +1951,7 @@ function RequirementAnalysisReport({ artifact, result, onArtifact }) {
   const status = getRequirementStatus(artifact);
   const ambiguities = result.ambiguities || [];
   const scopeClues = cleanScopeClues(result.potential_affected_areas || []);
+  const analystConcerns = result.analyst_concerns || [];
   return (
     <>
       <div className="stat-grid">
@@ -1260,6 +1962,7 @@ function RequirementAnalysisReport({ artifact, result, onArtifact }) {
       <SimpleList title="Business rules" items={result.business_rules || []} />
       <SimpleList title="Missing information" items={result.missing_information || []} tone={status === "NEEDS_CLARIFICATION" ? "danger" : undefined} />
       <SimpleList title="Assumptions" items={result.assumptions || []} />
+      <AnalystConcerns items={analystConcerns} />
       <ScopeClues items={scopeClues} />
       {ambiguities.length > 0 && (
         <section className="list-section">
@@ -1280,19 +1983,79 @@ function RequirementAnalysisReport({ artifact, result, onArtifact }) {
   );
 }
 
+function AnalystConcerns({ items }) {
+  if (!items.length) return null;
+  return (
+    <section className="list-section analyst-concerns-section">
+      <h3>Analyst concerns</h3>
+      <div className="analyst-concern-grid">
+        {items.map((item, index) => {
+          const severity = item.severity || "low";
+          return (
+            <article key={`${item.category}-${index}`} className={`analyst-concern-card ${severity}`}>
+              <div className="analyst-concern-top">
+                <span className="concern-category">{formatScopeClue(item.category || "concern")}</span>
+                <span className={`tag ${severity === "high" ? "bad" : severity === "medium" ? "warn" : "good"}`}>{severity}</span>
+              </div>
+              <p>{item.note}</p>
+              {item.question && <strong>{item.question}</strong>}
+              {item.evidence && <small>Evidence: {item.evidence}</small>}
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function ClarificationPanel({ artifact, onArtifact }) {
+  const clarificationItems = useMemo(() => buildClarificationItems(artifact.result || {}), [artifact]);
+  const [answers, setAnswers] = useState({});
   const [additionalInfo, setAdditionalInfo] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const profile = (artifact.agent || "").replace(/-agent$/, "") || ANALYST_PROFILE;
+
+  function updateAnswer(id, value) {
+    setAnswers((prev) => ({ ...prev, [id]: value }));
+  }
+
+  function answeredItems() {
+    return clarificationItems
+      .map((item) => ({ ...item, answer: answers[item.id] || "" }))
+      .filter((item) => item.answer.trim());
+  }
+
   return (
     <section className="handoff-panel clarification-panel">
       <h3>Clarification</h3>
-      <p className="muted">Add the analyst answer or confirmed business rule, then rerun requirement analysis as a linked artifact.</p>
+      <p className="muted">Answer each unclear point, then rerun requirement analysis as a linked artifact.</p>
+      {clarificationItems.length > 0 && (
+        <div className="clarification-answer-list">
+          {clarificationItems.map((item) => (
+            <article key={item.id} className="clarification-answer-card">
+              <div className="clarification-answer-top">
+                <span className="source-pill">{formatScopeClue(item.type)}</span>
+                {item.category && <span className="concern-category">{formatScopeClue(item.category)}</span>}
+              </div>
+              <strong>{item.question}</strong>
+              {item.evidence && <small>Evidence: {item.evidence}</small>}
+              <textarea
+                className="compact-textarea"
+                value={answers[item.id] || ""}
+                onChange={(event) => updateAnswer(item.id, event.target.value)}
+                placeholder="Add the confirmed answer or analyst decision for this item"
+              />
+            </article>
+          ))}
+        </div>
+      )}
+      <label className="field-label">Additional clarification note</label>
       <textarea
+        className="compact-textarea"
         value={additionalInfo}
         onChange={(event) => setAdditionalInfo(event.target.value)}
-        placeholder="Example: Payment method can only be changed before policy approval."
+        placeholder="Optional: add a general note that does not map to one item."
       />
       {error && <ErrorBox message={error} />}
       <button
@@ -1301,15 +2064,26 @@ function ClarificationPanel({ artifact, onArtifact }) {
         disabled={loading}
         onClick={async () => {
           setError("");
-          if (!additionalInfo.trim()) {
-            setError("Clarification text is required.");
+          const clarificationAnswers = answeredItems();
+          if (clarificationAnswers.length === 0 && !additionalInfo.trim()) {
+            setError("At least one clarification answer or additional note is required.");
             return;
           }
           setLoading(true);
           try {
             const response = await api(`/api/artifacts/${artifact.task_id}/clarify`, {
               method: "POST",
-              body: { profile, additional_info: additionalInfo },
+              body: {
+                profile,
+                additional_info: additionalInfo,
+                clarification_answers: clarificationAnswers.map((item) => ({
+                  type: item.type,
+                  category: item.category,
+                  question: item.question,
+                  answer: item.answer,
+                  evidence: item.evidence,
+                })),
+              },
             });
             onArtifact(normalizeRequirementResponse(response));
           } catch (err) {
@@ -1323,6 +2097,41 @@ function ClarificationPanel({ artifact, onArtifact }) {
       </button>
     </section>
   );
+}
+
+function buildClarificationItems(result) {
+  const items = [];
+  const seen = new Set();
+  (result.missing_information || []).forEach((question, index) => {
+    addClarificationItem(items, seen, {
+      id: `missing-${index}`,
+      type: "missing information",
+      category: "",
+      question,
+      evidence: "requirement analysis",
+    });
+  });
+  (result.analyst_concerns || []).forEach((concern, index) => {
+    const question = concern.question || concern.note;
+    if (!question) return;
+    addClarificationItem(items, seen, {
+      id: `concern-${index}`,
+      type: "analyst concern",
+      category: concern.category || "",
+      question,
+      evidence: concern.evidence || concern.note || "",
+    });
+  });
+  return items;
+}
+
+function addClarificationItem(items, seen, item) {
+  const normalized = String(item.question || "").trim().toLowerCase();
+  if (!normalized || seen.has(normalized)) {
+    return;
+  }
+  seen.add(normalized);
+  items.push({ ...item, question: String(item.question).trim() });
 }
 
 function CodeQaReport({ result }) {
@@ -1406,8 +2215,8 @@ function TimelineHandoff({ artifact, onArtifact }) {
   );
 }
 
-function ExternalHandoff({ artifact, handoffs, onReload }) {
-  const [summary, setSummary] = useState("Reviewed impact analysis");
+function ExternalHandoff({ artifact, handoffs, onReload, initialSummary = "Reviewed impact analysis" }) {
+  const [summary, setSummary] = useState(initialSummary);
   const [prUrl, setPrUrl] = useState("");
   const [dryRun, setDryRun] = useState(true);
   const [loading, setLoading] = useState("");
@@ -1934,10 +2743,30 @@ function formatTicketInput(ticket) {
   appendTicketLine(lines, "Title", ticket.ticketTitle);
   appendTicketLine(lines, "Priority", ticket.priority);
   appendTicketLine(lines, "Reporter", ticket.reporter);
+  appendTicketLine(lines, "Source type", ticket.sourceType);
+  appendTicketLine(lines, "Source name", ticket.sourceName);
+  appendTicketLine(lines, "Source URL", ticket.sourceUrl);
+  appendTicketLine(lines, "Received", ticket.receivedAt);
   appendTicketBlock(lines, "Description", ticket.description);
   appendTicketBlock(lines, "Acceptance criteria", ticket.acceptanceCriteria);
   appendTicketBlock(lines, "Comments / notes", ticket.comments);
   return lines.join("\n").trim();
+}
+
+function ticketFromImportResponse(response) {
+  return {
+    sourceType: response.source_type || "Jira",
+    sourceName: response.source_name || "Jira import",
+    sourceUrl: response.source_url || "",
+    receivedAt: response.received_at || "Imported from Jira",
+    ticketKey: response.ticket_key || "",
+    ticketTitle: response.ticket_title || "",
+    priority: response.priority || "Medium",
+    reporter: response.reporter || "",
+    description: response.description || "",
+    acceptanceCriteria: response.acceptance_criteria || "",
+    comments: response.comments || "",
+  };
 }
 
 function appendTicketLine(lines, label, value) {

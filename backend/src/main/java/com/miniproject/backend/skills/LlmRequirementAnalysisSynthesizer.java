@@ -18,7 +18,9 @@ public class LlmRequirementAnalysisSynthesizer implements RequirementAnalysisSyn
 
     private static final String SYSTEM_PROMPT = """
             You are a Software Analyst assistant. Analyse a ticket or change request for business rules,
-            ambiguities, missing information, assumptions, and likely affected functional areas.
+            ambiguities, missing information, assumptions, likely affected functional areas, and analyst concerns.
+            Pay attention to actor clarity, contradictory acceptance criteria, privacy, security, role-based access,
+            performance, availability, audit/compliance, and testability risks.
             Return strict JSON only. Do not include markdown.
             """;
 
@@ -53,12 +55,30 @@ public class LlmRequirementAnalysisSynthesizer implements RequirementAnalysisSyn
                 Candidate scope clues extracted by the platform:
                 %s
 
+                Analyse it like a real Software Analyst preparing a ticket for development and QA:
+                - Check whether actor/role and expected business outcome are clear.
+                - Flag contradictions between title, description, acceptance criteria, and comments.
+                - Flag PII, location, donor/victim, payment, or sensitive-data exposure.
+                - Flag role-based access/security concerns.
+                - Flag performance/availability risk for filtering, searching, listing, reporting, retry, or bulk actions.
+                - Flag audit, compliance, logging, and traceability concerns when relevant.
+                - Flag testing concerns that should shape QA/UAT scope.
+
                 Return this JSON shape exactly:
                 {
                   "business_rules": ["confirmed rules or expected behavior"],
                   "ambiguities": [{"note": "unclear point", "evidence": "text that caused it"}],
                   "missing_information": ["information the analyst should ask for"],
                   "assumptions": ["reasonable assumptions if the team continues"],
+                  "analyst_concerns": [
+                    {
+                      "category": "privacy|security|role_access|performance|availability|compliance|audit|data_quality|testing|none",
+                      "severity": "low|medium|high",
+                      "note": "why this matters to the analyst workflow",
+                      "evidence": "ticket text or clue that caused this concern",
+                      "question": "follow-up question or validation step"
+                    }
+                  ],
                   "potential_affected_areas": ["user-facing area, module, page, API, database entity, or workflow"],
                   "confidence": "low|medium|high"
                 }
@@ -72,6 +92,7 @@ public class LlmRequirementAnalysisSynthesizer implements RequirementAnalysisSyn
             List<RequirementAnalysisResult.Ambiguity> ambiguities = ambiguityList(root.path("ambiguities"));
             List<String> missingInformation = stringList(root.path("missing_information"));
             List<String> assumptions = stringList(root.path("assumptions"));
+            List<RequirementAnalysisResult.AnalystConcern> analystConcerns = analystConcernList(root.path("analyst_concerns"));
             List<String> potentialAffectedAreas = stringList(root.path("potential_affected_areas"));
             String confidence = normalizeConfidence(root.path("confidence").asText("low"));
 
@@ -85,6 +106,7 @@ public class LlmRequirementAnalysisSynthesizer implements RequirementAnalysisSyn
                     ambiguities,
                     missingInformation,
                     assumptions,
+                    analystConcerns,
                     potentialAffectedAreas,
                     confidence,
                     evidence));
@@ -135,7 +157,33 @@ public class LlmRequirementAnalysisSynthesizer implements RequirementAnalysisSyn
         return values;
     }
 
+    private List<RequirementAnalysisResult.AnalystConcern> analystConcernList(JsonNode node) {
+        List<RequirementAnalysisResult.AnalystConcern> values = new ArrayList<>();
+        if (!node.isArray()) {
+            return values;
+        }
+        for (JsonNode item : node) {
+            String category = item.path("category").asText("").trim();
+            String severity = normalizeSeverity(item.path("severity").asText("low"));
+            String note = item.path("note").asText("").trim();
+            String evidence = item.path("evidence").asText("").trim();
+            String question = item.path("question").asText("").trim();
+            if (!category.isBlank() && !note.isBlank()) {
+                values.add(new RequirementAnalysisResult.AnalystConcern(category, severity, note, evidence, question));
+            }
+        }
+        return values;
+    }
+
     private String normalizeConfidence(String value) {
+        String normalized = value == null ? "" : value.trim().toLowerCase();
+        return switch (normalized) {
+            case "medium", "high" -> normalized;
+            default -> "low";
+        };
+    }
+
+    private String normalizeSeverity(String value) {
         String normalized = value == null ? "" : value.trim().toLowerCase();
         return switch (normalized) {
             case "medium", "high" -> normalized;

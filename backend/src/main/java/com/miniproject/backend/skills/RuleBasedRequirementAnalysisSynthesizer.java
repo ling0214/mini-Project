@@ -46,6 +46,7 @@ public class RuleBasedRequirementAnalysisSynthesizer implements RequirementAnaly
         List<String> missingInformation = new ArrayList<>();
         List<RequirementAnalysisResult.Ambiguity> ambiguities = new ArrayList<>();
         List<String> businessRules = new ArrayList<>();
+        List<RequirementAnalysisResult.AnalystConcern> analystConcerns = analystConcerns(lower, description);
 
         int wordCount = description.trim().isEmpty() ? 0 : description.trim().split("\\s+").length;
         if (wordCount < MIN_WORDS_FOR_CONCRETE_SCOPE) {
@@ -87,7 +88,60 @@ public class RuleBasedRequirementAnalysisSynthesizer implements RequirementAnaly
         }
 
         return new RequirementAnalysisResult(
-                businessRules, ambiguities, missingInformation, assumptions, candidateAreas, confidence, evidence);
+                businessRules,
+                ambiguities,
+                missingInformation,
+                assumptions,
+                analystConcerns,
+                candidateAreas,
+                confidence,
+                evidence);
+    }
+
+    private List<RequirementAnalysisResult.AnalystConcern> analystConcerns(String lower, String description) {
+        List<RequirementAnalysisResult.AnalystConcern> concerns = new ArrayList<>();
+        if (containsAny(lower, "victim", "donor", "address", "phone", "email", "location", "city", "nric", "identity card")) {
+            concerns.add(new RequirementAnalysisResult.AnalystConcern(
+                    "privacy",
+                    "medium",
+                    "Requirement may expose personal, location, donor, or aid-request data.",
+                    description,
+                    "Confirm which fields are visible to each role and whether personal data needs masking or consent."));
+        }
+        if (containsAny(lower, "admin", "superadmin", "donor", "victim", "approved", "access", "role")) {
+            concerns.add(new RequirementAnalysisResult.AnalystConcern(
+                    "role_access",
+                    "medium",
+                    "Requirement appears to depend on who is allowed to view or change records.",
+                    description,
+                    "Confirm the role permission matrix and whether unapproved records must be hidden."));
+        }
+        if (containsAny(lower, "filter", "search", "sort", "list", "records", "report")) {
+            concerns.add(new RequirementAnalysisResult.AnalystConcern(
+                    "performance",
+                    "low",
+                    "Listing or filtering changes may affect response time when data grows.",
+                    description,
+                    "Confirm expected record volume, pagination behavior, and whether database indexes are needed."));
+        }
+        if (containsAny(lower, "must", "should", "given", "when", "then", "filter", "update", "change")) {
+            concerns.add(new RequirementAnalysisResult.AnalystConcern(
+                    "testing",
+                    "low",
+                    "Change needs positive, negative, and regression test coverage before handoff.",
+                    description,
+                    "Confirm the main acceptance path, denied-access cases, and affected regression areas."));
+        }
+        return concerns;
+    }
+
+    private boolean containsAny(String lower, String... needles) {
+        for (String needle : needles) {
+            if (lower.contains(needle)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     static List<String> splitSentences(String text) {

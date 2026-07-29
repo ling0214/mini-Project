@@ -1,197 +1,129 @@
-<mxfile host="app.diagrams.net" modified="2026-07-27T00:00:00.000Z" agent="Codex" version="24.7.17" type="device">
-  <diagram id="daily-workflow" name="Daily Work Task Flow">
-    <mxGraphModel dx="1600" dy="1200" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="1650" math="0" shadow="0">
+<mxfile host="app.diagrams.net" modified="2026-07-29T00:00:00.000Z" agent="Codex" version="24.7.17" type="device">
+  <diagram id="simple-sa-flow" name="Simple Analyst Flow">
+    <mxGraphModel dx="1600" dy="1200" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="1200" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="title" value="Software Analyst Daily Work Task Flow" style="text;html=1;strokeColor=none;fillColor=none;fontSize=24;fontStyle=1;align=center;verticalAlign=middle;" vertex="1" parent="1">
-          <mxGeometry x="250" y="30" width="900" height="40" as="geometry" />
+
+        <mxCell id="title" value="Software Analyst Workflow Assistant - Simple Flow" style="text;html=1;strokeColor=none;fillColor=none;fontSize=24;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="320" y="30" width="860" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="subtitle" value="Plain workflow view: what the analyst does during normal project work" style="text;html=1;strokeColor=none;fillColor=none;fontSize=13;fontColor=#5B6776;align=center;verticalAlign=middle;" vertex="1" parent="1">
-          <mxGeometry x="250" y="70" width="900" height="30" as="geometry" />
+        <mxCell id="subtitle" value="Jira ticket intake - AI analysis skills - MCP project context - reviewed handoff" style="text;html=1;strokeColor=none;fillColor=none;fontSize=13;fontColor=#9CA3AF;align=center;" vertex="1" parent="1">
+          <mxGeometry x="320" y="70" width="860" height="30" as="geometry" />
         </mxCell>
 
-        <mxCell id="task-1" value="1. Receive Requirement / Ticket&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Read Jira ticket, user story, customer request, or change description.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E6F4F1;strokeColor=#0F766E;fontSize=14;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="500" y="130" width="380" height="80" as="geometry" />
+        <mxCell id="jira" value="JIRA TICKET&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;KAN-1 / KAN-2 / KAN-3&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#111827;strokeColor=#D1D5DB;fontColor=#FFFFFF;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="100" y="150" width="210" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="task-2" value="2. Understand What Needs To Change&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Summarise the request in analyst wording before checking impact.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#AEB8C6;fontSize=14;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="500" y="250" width="380" height="80" as="geometry" />
+        <mxCell id="inbox" value="Analyst Inbox&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Jira / Email / Meeting Notes / Manual&lt;br&gt;JiraConnector for live import&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#111827;strokeColor=#60A5FA;fontColor=#FFFFFF;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="410" y="150" width="230" height="80" as="geometry" />
         </mxCell>
-        <mxCell id="task-3" value="3. Break Down Requirement&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Find business rules, assumptions, unclear wording, and missing information.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#AEB8C6;fontSize=14;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="500" y="370" width="380" height="80" as="geometry" />
+        <mxCell id="review" value="Ticket Review&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Same screen as requirement intake&lt;br&gt;Analyst checks imported details and adds missing AC if needed&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#111827;strokeColor=#D1D5DB;fontColor=#FFFFFF;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="740" y="150" width="250" height="90" as="geometry" />
         </mxCell>
-        <mxCell id="decision-clear" value="Is the requirement clear enough?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF4D6;strokeColor=#9A6700;fontSize=14;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="560" y="500" width="260" height="120" as="geometry" />
-        </mxCell>
-        <mxCell id="clarify" value="Ask Clarification&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Ask PM, BA, user, or developer about missing rules, edge cases, or acceptance criteria.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4D6;strokeColor=#9A6700;fontSize=14;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="105" y="515" width="350" height="90" as="geometry" />
-        </mxCell>
-        <mxCell id="update-ticket" value="Update Requirement Notes&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Add confirmed answers back into the ticket / requirement notes.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4D6;strokeColor=#9A6700;fontSize=14;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="105" y="655" width="350" height="80" as="geometry" />
-        </mxCell>
-        <mxCell id="review-req" value="Confirm Requirement Understanding&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Analyst checks that rules, assumptions, and open questions are acceptable.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E6F4F1;strokeColor=#0F766E;fontSize=14;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="500" y="680" width="380" height="85" as="geometry" />
-        </mxCell>
-        <mxCell id="task-impact" value="4. Do Impact Analysis&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Check which screen, API, service, table, module, or process may be affected.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#AEB8C6;fontSize=14;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="500" y="820" width="380" height="85" as="geometry" />
-        </mxCell>
-        <mxCell id="decision-evidence" value="Enough evidence to trust impact?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF4D6;strokeColor=#9A6700;fontSize=14;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="560" y="955" width="260" height="120" as="geometry" />
-        </mxCell>
-        <mxCell id="check-dev" value="Check With Developer / Code Owner&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;If evidence is weak, confirm affected area manually before planning tests.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4D6;strokeColor=#9A6700;fontSize=14;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="925" y="970" width="350" height="90" as="geometry" />
-        </mxCell>
-        <mxCell id="review-impact" value="Confirm Impact Scope&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Accept affected areas, risk notes, and assumptions as working analysis.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E6F4F1;strokeColor=#0F766E;fontSize=14;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="500" y="1120" width="380" height="85" as="geometry" />
-        </mxCell>
-        <mxCell id="task-test" value="5. Prepare Testing Scope&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Create happy path, negative cases, edge cases, and regression checklist.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#AEB8C6;fontSize=14;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="500" y="1260" width="380" height="90" as="geometry" />
-        </mxCell>
-        <mxCell id="decision-tests" value="Need more test cases?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF4D6;strokeColor=#9A6700;fontSize=14;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="560" y="1400" width="260" height="110" as="geometry" />
-        </mxCell>
-        <mxCell id="add-tests" value="Add / Refine Test Cases&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Add missing UAT, regression, validation, and failure scenarios.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4D6;strokeColor=#9A6700;fontSize=14;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="925" y="1410" width="350" height="85" as="geometry" />
-        </mxCell>
-        <mxCell id="report" value="6. Compile Analyst Report&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Share requirement summary, clarification, impact scope, risk, assumptions, and testing scope.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E6F4F1;strokeColor=#0F766E;fontSize=14;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="500" y="1560" width="380" height="90" as="geometry" />
+        <mxCell id="req" value="Requirement Analysis&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;RequirementAnalysisSkill&lt;br&gt;business rules / gaps / concerns&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#111827;strokeColor=#34D399;fontColor=#FFFFFF;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="740" y="310" width="250" height="90" as="geometry" />
         </mxCell>
 
-        <mxCell id="note-ai" value="System support:&lt;br&gt;- drafts analysis&lt;br&gt;- flags missing info&lt;br&gt;- keeps evidence&lt;br&gt;- blocks unsafe handoff before review" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4F6F8;strokeColor=#AEB8C6;fontSize=12;align=left;spacing=10;" vertex="1" parent="1">
-          <mxGeometry x="70" y="105" width="330" height="125" as="geometry" />
+        <mxCell id="clear" value="Requirement clear?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#111827;strokeColor=#FBBF24;fontColor=#FFFFFF;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="778" y="470" width="175" height="115" as="geometry" />
         </mxCell>
-        <mxCell id="note-human" value="Human analyst stays responsible for:&lt;br&gt;- confirming business meaning&lt;br&gt;- asking stakeholders&lt;br&gt;- accepting impact scope&lt;br&gt;- approving final report" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4F6F8;strokeColor=#AEB8C6;fontSize=12;align=left;spacing=10;" vertex="1" parent="1">
-          <mxGeometry x="970" y="105" width="330" height="125" as="geometry" />
+        <mxCell id="clarify" value="Answer Clarification Items&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Answer missing info / concern questions&lt;br&gt;Optional note, then re-analyse&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#111827;strokeColor=#FBBF24;fontColor=#FFFFFF;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="390" y="480" width="250" height="90" as="geometry" />
         </mxCell>
-
-        <mxCell id="e1" edge="1" parent="1" source="task-1" target="task-2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#5B6776;">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e2" edge="1" parent="1" source="task-2" target="task-3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#5B6776;">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e3" edge="1" parent="1" source="task-3" target="decision-clear" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#5B6776;">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e4" value="No" edge="1" parent="1" source="decision-clear" target="clarify" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#9A6700;fontStyle=1;">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e5" edge="1" parent="1" source="clarify" target="update-ticket" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#9A6700;">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e6" value="Re-analyse" edge="1" parent="1" source="update-ticket" target="task-3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#9A6700;">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e7" value="Yes" edge="1" parent="1" source="decision-clear" target="review-req" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#0F766E;fontStyle=1;">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e8" edge="1" parent="1" source="review-req" target="task-impact" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#5B6776;">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e9" edge="1" parent="1" source="task-impact" target="decision-evidence" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#5B6776;">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e10" value="No / unsure" edge="1" parent="1" source="decision-evidence" target="check-dev" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#9A6700;fontStyle=1;">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e11" value="Update impact notes" edge="1" parent="1" source="check-dev" target="task-impact" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#9A6700;">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e12" value="Yes" edge="1" parent="1" source="decision-evidence" target="review-impact" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#0F766E;fontStyle=1;">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e13" edge="1" parent="1" source="review-impact" target="task-test" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#5B6776;">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e14" edge="1" parent="1" source="task-test" target="decision-tests" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#5B6776;">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e15" value="Yes" edge="1" parent="1" source="decision-tests" target="add-tests" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#9A6700;fontStyle=1;">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e16" value="Refine scope" edge="1" parent="1" source="add-tests" target="task-test" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#9A6700;">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e17" value="No" edge="1" parent="1" source="decision-tests" target="report" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#0F766E;fontStyle=1;">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-      </root>
-    </mxGraphModel>
-  </diagram>
-  <diagram id="implementation-plan" name="Implementation Plan">
-    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0">
-      <root>
-        <mxCell id="0" />
-        <mxCell id="1" parent="0" />
-        <mxCell id="p-title" value="Implementation Plan Mapped To Daily Analyst Tasks" style="text;html=1;strokeColor=none;fillColor=none;fontSize=22;fontStyle=1;align=center;verticalAlign=middle;" vertex="1" parent="1">
-          <mxGeometry x="250" y="30" width="900" height="40" as="geometry" />
-        </mxCell>
-        <mxCell id="done-lane" value="Already Implemented" style="swimlane;html=1;startSize=34;fillColor=#E6F4F1;strokeColor=#0F766E;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="80" y="100" width="360" height="640" as="geometry" />
-        </mxCell>
-        <mxCell id="next-lane" value="Next To Implement" style="swimlane;html=1;startSize=34;fillColor=#FFF4D6;strokeColor=#9A6700;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="520" y="100" width="360" height="640" as="geometry" />
-        </mxCell>
-        <mxCell id="later-lane" value="Future Extension" style="swimlane;html=1;startSize=34;fillColor=#F4F6F8;strokeColor=#AEB8C6;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="960" y="100" width="360" height="640" as="geometry" />
+        <mxCell id="loop-label" value="LOOP" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FACC15;strokeColor=#FACC15;fontColor=#111827;fontSize=12;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="305" y="510" width="60" height="24" as="geometry" />
         </mxCell>
 
-        <mxCell id="done-1" value="Requirement intake screen&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Analyst can paste ticket / user story.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0F766E;fontSize=13;" vertex="1" parent="done-lane">
-          <mxGeometry x="30" y="60" width="300" height="70" as="geometry" />
+        <mxCell id="review-gate" value="Review Gate&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Mark requirement reviewed&lt;br&gt;before next step&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#111827;strokeColor=#D1D5DB;fontColor=#FFFFFF;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="740" y="660" width="250" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="done-2" value="Requirement breakdown&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Business rules, assumptions, missing info.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0F766E;fontSize=13;" vertex="1" parent="done-lane">
-          <mxGeometry x="30" y="155" width="300" height="70" as="geometry" />
+        <mxCell id="impact" value="Impact Analysis&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;ImpactAnalysisSkill&lt;br&gt;affected modules / risk / evidence&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#111827;strokeColor=#818CF8;fontColor=#FFFFFF;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="740" y="820" width="250" height="90" as="geometry" />
         </mxCell>
-        <mxCell id="done-3" value="Clarification loop&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Analyst can add answers and rerun analysis.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0F766E;fontSize=13;" vertex="1" parent="done-lane">
-          <mxGeometry x="30" y="250" width="300" height="70" as="geometry" />
-        </mxCell>
-        <mxCell id="done-4" value="Impact scope&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Identify affected modules and risk notes.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0F766E;fontSize=13;" vertex="1" parent="done-lane">
-          <mxGeometry x="30" y="345" width="300" height="70" as="geometry" />
-        </mxCell>
-        <mxCell id="done-5" value="Testing scope&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Generate test cases from impacted modules.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0F766E;fontSize=13;" vertex="1" parent="done-lane">
-          <mxGeometry x="30" y="440" width="300" height="70" as="geometry" />
-        </mxCell>
-        <mxCell id="done-6" value="Persisted handoff summary&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Compile findings into a reviewable artifact.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0F766E;fontSize=13;" vertex="1" parent="done-lane">
-          <mxGeometry x="30" y="535" width="300" height="70" as="geometry" />
+        <mxCell id="mcp" value="codebase memory MCP&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;MyBanjirCare project graph&lt;br&gt;source code / modules / evidence&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#EC4899;strokeColor=#F9A8D4;fontColor=#FFFFFF;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="390" y="820" width="250" height="90" as="geometry" />
         </mxCell>
 
-        <mxCell id="next-1" value="Export handoff summary&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Daily task: send official findings as Markdown / PDF / DOCX.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#9A6700;fontSize=13;" vertex="1" parent="next-lane">
-          <mxGeometry x="30" y="60" width="300" height="80" as="geometry" />
+        <mxCell id="test" value="Test Scenario&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;TestCaseGenSkill&lt;br&gt;positive / negative / edge cases&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#111827;strokeColor=#22D3EE;fontColor=#FFFFFF;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="820" width="250" height="90" as="geometry" />
         </mxCell>
-        <mxCell id="next-2" value="Export analyst report&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Daily task: send report to PM, developer, tester, or supervisor.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#9A6700;fontSize=13;" vertex="1" parent="next-lane">
-          <mxGeometry x="30" y="165" width="300" height="80" as="geometry" />
+        <mxCell id="test-review" value="Testing Scope Review&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Accept / reject / edit&lt;br&gt;prioritize test cases&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#111827;strokeColor=#22D3EE;fontColor=#FFFFFF;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="980" width="250" height="90" as="geometry" />
         </mxCell>
-        <mxCell id="next-3" value="Workflow history by case&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Daily task: reopen previous analysis and see the decision trail.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#9A6700;fontSize=13;" vertex="1" parent="next-lane">
-          <mxGeometry x="30" y="270" width="300" height="80" as="geometry" />
+        <mxCell id="handoff" value="Handoff Summary&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;HandoffSummarySkill&lt;br&gt;compile analyst report&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#111827;strokeColor=#F472B6;fontColor=#FFFFFF;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="740" y="980" width="250" height="90" as="geometry" />
         </mxCell>
-        <mxCell id="next-4" value="Manual test review controls&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Daily task: mark generated cases as keep / edit / discard.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#9A6700;fontSize=13;" vertex="1" parent="next-lane">
-          <mxGeometry x="30" y="375" width="300" height="80" as="geometry" />
-        </mxCell>
-        <mxCell id="next-5" value="Better clarification tracking&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Daily task: know which question was asked and who answered it.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#9A6700;fontSize=13;" vertex="1" parent="next-lane">
-          <mxGeometry x="30" y="480" width="300" height="80" as="geometry" />
+        <mxCell id="external" value="External Handoff&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Create Jira / Bitbucket handoff&lt;br&gt;reviewed summary only&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#111827;strokeColor=#F472B6;fontColor=#FFFFFF;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="390" y="980" width="250" height="90" as="geometry" />
         </mxCell>
 
-        <mxCell id="later-1" value="Ticket / document import&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Pull Jira, docs, meeting notes, or requirement files as context.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#AEB8C6;fontSize=13;" vertex="1" parent="later-lane">
-          <mxGeometry x="30" y="60" width="300" height="80" as="geometry" />
-        </mxCell>
-        <mxCell id="later-2" value="Memory / project context&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Remember common modules, recurring issues, and analyst preferences.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#AEB8C6;fontSize=13;" vertex="1" parent="later-lane">
-          <mxGeometry x="30" y="165" width="300" height="80" as="geometry" />
-        </mxCell>
-        <mxCell id="later-3" value="LLM summary layer&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Make reports more readable while keeping evidence and review gates.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#AEB8C6;fontSize=13;" vertex="1" parent="later-lane">
-          <mxGeometry x="30" y="270" width="300" height="80" as="geometry" />
-        </mxCell>
-        <mxCell id="later-4" value="Multi-project support&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Analyst chooses which project/codebase the workflow should inspect.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#AEB8C6;fontSize=13;" vertex="1" parent="later-lane">
-          <mxGeometry x="30" y="375" width="300" height="80" as="geometry" />
-        </mxCell>
-        <mxCell id="later-5" value="External handoff polish&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Push approved findings to Jira, Bitbucket, Slack, or email.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#AEB8C6;fontSize=13;" vertex="1" parent="later-lane">
-          <mxGeometry x="30" y="480" width="300" height="80" as="geometry" />
+        <mxCell id="artifact" value="Artifact Memory&lt;br&gt;&lt;font style=&quot;font-size: 12px&quot;&gt;Stores analysis result&lt;br&gt;review status&lt;br&gt;clarification lineage&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#111827;strokeColor=#A78BFA;fontColor=#FFFFFF;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="470" width="250" height="100" as="geometry" />
         </mxCell>
 
-        <mxCell id="p-e1" edge="1" parent="1" source="done-lane" target="next-lane" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#5B6776;">
+        <mxCell id="e1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#D1D5DB;strokeWidth=2;" edge="1" parent="1" source="jira" target="inbox">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="p-e2" edge="1" parent="1" source="next-lane" target="later-lane" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#5B6776;">
+        <mxCell id="e2" value="sync" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#D1D5DB;strokeWidth=2;fontColor=#FFFFFF;fontSize=11;" edge="1" parent="1" source="inbox" target="review">
           <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" value="analyze" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#34D399;strokeWidth=2;fontColor=#FFFFFF;fontSize=11;" edge="1" parent="1" source="review" target="req">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#FBBF24;strokeWidth=2;" edge="1" parent="1" source="req" target="clear">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" value="No" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#FBBF24;strokeWidth=2;fontColor=#FFFFFF;fontSize=12;" edge="1" parent="1" source="clear" target="clarify">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" value="re-analyse" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#FBBF24;strokeWidth=2;fontColor=#FFFFFF;fontSize=11;" edge="1" parent="1" source="clarify" target="req">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="515" y="430" />
+              <mxPoint x="740" y="430" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e7" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#D1D5DB;strokeWidth=2;fontColor=#FFFFFF;fontSize=12;" edge="1" parent="1" source="clear" target="review-gate">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#818CF8;strokeWidth=2;" edge="1" parent="1" source="review-gate" target="impact">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e9" value="project context" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#EC4899;strokeWidth=2;fontColor=#FFFFFF;fontSize=11;" edge="1" parent="1" source="mcp" target="impact">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" value="affected modules" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#22D3EE;strokeWidth=2;fontColor=#FFFFFF;fontSize=11;" edge="1" parent="1" source="impact" target="test">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e11" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#22D3EE;strokeWidth=2;" edge="1" parent="1" source="test" target="test-review">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e12" value="reviewed test scope" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#F472B6;strokeWidth=2;fontColor=#FFFFFF;fontSize=11;" edge="1" parent="1" source="test-review" target="handoff">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1205" y="1110" />
+              <mxPoint x="865" y="1110" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e13" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#F472B6;strokeWidth=2;" edge="1" parent="1" source="handoff" target="external">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e14" value="store / read" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=open;dashed=1;strokeColor=#A78BFA;strokeWidth=2;fontColor=#FFFFFF;fontSize=11;" edge="1" parent="1" source="req" target="artifact">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e15" value="store / read" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=open;dashed=1;strokeColor=#A78BFA;strokeWidth=2;fontColor=#FFFFFF;fontSize=11;" edge="1" parent="1" source="impact" target="artifact">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e16" value="read artifacts" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=open;dashed=1;strokeColor=#A78BFA;strokeWidth=2;fontColor=#FFFFFF;fontSize=11;" edge="1" parent="1" source="handoff" target="artifact">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1000" y="1025" />
+              <mxPoint x="1185" y="590" />
+            </Array>
+          </mxGeometry>
         </mxCell>
       </root>
     </mxGraphModel>

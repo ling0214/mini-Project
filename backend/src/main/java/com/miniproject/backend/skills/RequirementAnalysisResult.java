@@ -16,11 +16,14 @@ public record RequirementAnalysisResult(
         List<Ambiguity> ambiguities,
         List<String> missingInformation,
         List<String> assumptions,
+        List<AnalystConcern> analystConcerns,
         List<String> potentialAffectedAreas,
         String confidence,
         List<Evidence> evidence) {
 
     public record Ambiguity(String note, String evidence) {
     }
-}
 
+    public record AnalystConcern(String category, String severity, String note, String evidence, String question) {
+    }
+}

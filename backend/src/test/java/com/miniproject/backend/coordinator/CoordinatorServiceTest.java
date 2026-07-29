@@ -114,6 +114,7 @@ class CoordinatorServiceTest {
                 "software-analyst-agent",
                 skill,
                 taskId,
+                null,
                 Instant.now().toString(),
                 result,
                 List.of(new Evidence(skill + " evidence", skill + " source")),
