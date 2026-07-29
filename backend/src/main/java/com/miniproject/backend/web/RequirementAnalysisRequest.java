@@ -7,6 +7,10 @@ public record RequirementAnalysisRequest(
         String ticketTitle,
         String priority,
         String reporter,
+        String sourceType,
+        String sourceName,
+        String sourceUrl,
+        String receivedAt,
         String acceptanceCriteria,
         String comments) {
 
@@ -16,6 +20,10 @@ public record RequirementAnalysisRequest(
                 && safe(ticketTitle).isBlank()
                 && safe(priority).isBlank()
                 && safe(reporter).isBlank()
+                && safe(sourceType).isBlank()
+                && safe(sourceName).isBlank()
+                && safe(sourceUrl).isBlank()
+                && safe(receivedAt).isBlank()
                 && safe(acceptanceCriteria).isBlank()
                 && safe(comments).isBlank()) {
             return freeTextDescription;
@@ -26,6 +34,10 @@ public record RequirementAnalysisRequest(
         appendLine(builder, "Title", ticketTitle);
         appendLine(builder, "Priority", priority);
         appendLine(builder, "Reporter", reporter);
+        appendLine(builder, "Source type", sourceType);
+        appendLine(builder, "Source name", sourceName);
+        appendLine(builder, "Source URL", sourceUrl);
+        appendLine(builder, "Received", receivedAt);
         appendBlock(builder, "Description", freeTextDescription);
         appendBlock(builder, "Acceptance criteria", acceptanceCriteria);
         appendBlock(builder, "Comments / notes", comments);

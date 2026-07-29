@@ -15,6 +15,10 @@ class RequirementAnalysisRequestTest {
                 "Add OTP verification during payment",
                 "High",
                 "Product owner",
+                "Jira",
+                "Jira import",
+                "https://jira.example.local/browse/PAY-102",
+                "Today 09:30",
                 "Given a customer is paying, when OTP is valid, then payment can continue.",
                 "Stakeholder asked to keep existing card validation.");
 
@@ -23,6 +27,10 @@ class RequirementAnalysisRequestTest {
                 .contains("Title: Add OTP verification during payment")
                 .contains("Priority: High")
                 .contains("Reporter: Product owner")
+                .contains("Source type: Jira")
+                .contains("Source name: Jira import")
+                .contains("Source URL: https://jira.example.local/browse/PAY-102")
+                .contains("Received: Today 09:30")
                 .contains("Description:\nCustomer must confirm OTP before payment is submitted.")
                 .contains("Acceptance criteria:\nGiven a customer is paying")
                 .contains("Comments / notes:\nStakeholder asked");
@@ -33,6 +41,10 @@ class RequirementAnalysisRequestTest {
         RequirementAnalysisRequest request = new RequirementAnalysisRequest(
                 "software-analyst",
                 "Customer must be able to update payment method.",
+                null,
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,

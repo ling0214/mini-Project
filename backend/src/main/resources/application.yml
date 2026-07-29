@@ -70,13 +70,32 @@ integrations:
     api-token: ${JIRA_API_TOKEN:}
     project-key: ${JIRA_PROJECT_KEY:}
     issue-type: ${JIRA_ISSUE_TYPE:Task}
+    acceptance-criteria-field: ${JIRA_ACCEPTANCE_CRITERIA_FIELD:}
     # basic = classic Jira API token against https://<site>.atlassian.net
     # scoped = scoped Jira API token against https://api.atlassian.com/ex/jira/{cloud-id}
     auth-mode: ${JIRA_AUTH_MODE:basic}
     cloud-id: ${JIRA_CLOUD_ID:}
+
   bitbucket:
     # Bitbucket Cloud PR comment connector, disabled by default.
     enabled: ${BITBUCKET_ENABLED:false}
     api-base-url: ${BITBUCKET_API_BASE_URL:https://api.bitbucket.org/2.0}
     username: ${BITBUCKET_USERNAME:}
     app-password: ${BITBUCKET_APP_PASSWORD:}
+
+  google:
+    # OAuth 2.0, covers Calendar (read-only) + Gmail (read-only) with one
+    # connection — a Meet event's join link lives on the Calendar event
+    # itself, there's no separate personal "list my Meet meetings" API.
+    # Disabled by default. Put real client-id/client-secret in
+    # application-local.yml (never here — this file is tracked by git).
+    enabled: ${GOOGLE_ENABLED:false}
+    client-id: ${GOOGLE_CLIENT_ID:}
+    client-secret: ${GOOGLE_CLIENT_SECRET:}
+    # Must exactly match an "Authorized redirect URI" on the Google Cloud
+    # OAuth client (Web application type).
+    redirect-uri: ${GOOGLE_REDIRECT_URI:http://localhost:8080/api/integrations/google/callback}
+    scopes: ${GOOGLE_SCOPES:https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/gmail.readonly}
+    # Where the backend sends the browser after a successful connect — the
+    # running Vite dev server, not an API endpoint.
+    frontend-redirect: ${GOOGLE_FRONTEND_REDIRECT:http://127.0.0.1:5173/}

@@ -1,5 +1,6 @@
 package com.miniproject.backend.integrations;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.Locale;
@@ -14,11 +15,25 @@ import java.util.regex.Pattern;
 public class JiraTicketImportService {
 
     private static final Pattern ISSUE_KEY = Pattern.compile("([A-Z][A-Z0-9]+-\\d+)");
+    private final JiraConnector jiraConnector;
+
+    @Autowired
+    public JiraTicketImportService(JiraConnector jiraConnector) {
+        this.jiraConnector = jiraConnector;
+    }
+
+    JiraTicketImportService() {
+        this.jiraConnector = null;
+    }
 
     public JiraTicketImportResponse importTicket(JiraTicketImportRequest request) {
         String key = extractKey(request);
         if (key.isBlank()) {
             throw new IllegalArgumentException("ticketKey or ticketUrl is required");
+        }
+
+        if (jiraConnector != null && jiraConnector.canReadIssues()) {
+            return realJiraImport(jiraConnector.fetchIssue(key));
         }
 
         if ("MBC-204".equalsIgnoreCase(key)) {
@@ -31,6 +46,10 @@ public class JiraTicketImportService {
                     "Given a donor is browsing available aid requests, when the donor selects city, category, or urgency filters, then the page only shows matching approved aid requests.",
                     "Use page reload first. AJAX filtering can be treated as a future enhancement unless the stakeholder confirms it is required now.",
                     "jira-dry-run",
+                    "Jira",
+                    "Jira sample import",
+                    "https://jira.example.local/browse/MBC-204",
+                    "Sample ticket",
                     true,
                     "Dry-run Jira import loaded from the MyBanjirCare sample ticket.");
         }
@@ -44,8 +63,30 @@ public class JiraTicketImportService {
                 "Add acceptance criteria from Jira before marking the requirement as reviewed.",
                 "Dry-run importer only. Configure real Jira read access in the next phase.",
                 "jira-dry-run",
+                "Jira",
+                "Jira placeholder import",
+                "",
+                "Dry-run placeholder",
                 true,
                 "Dry-run Jira import created a placeholder because this key is not in the sample set.");
+    }
+
+    private JiraTicketImportResponse realJiraImport(JiraConnector.JiraIssue issue) {
+        return new JiraTicketImportResponse(
+                issue.key(),
+                issue.title(),
+                defaultIfBlank(issue.priority(), "Medium"),
+                defaultIfBlank(issue.reporter(), "Jira"),
+                issue.description(),
+                issue.acceptanceCriteria(),
+                issue.comments(),
+                "jira",
+                "Jira",
+                "Jira read-only import",
+                issue.sourceUrl(),
+                issue.receivedAt(),
+                false,
+                "Imported live Jira ticket " + issue.key() + ".");
     }
 
     private static String extractKey(JiraTicketImportRequest request) {
@@ -62,5 +103,10 @@ public class JiraTicketImportService {
 
     private static String clean(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private static String defaultIfBlank(String value, String fallback) {
+        String cleaned = clean(value);
+        return cleaned.isBlank() ? fallback : cleaned;
     }
 }

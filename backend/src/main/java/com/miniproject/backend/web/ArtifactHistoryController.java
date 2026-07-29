@@ -160,11 +160,11 @@ public class ArtifactHistoryController {
     @PostMapping("/{taskId}/clarify")
     public RequirementAnalysisResponse clarify(
             @PathVariable String taskId, @RequestBody ClarifyRequirementAnalysisRequest request) {
-        if (request.profile() == null || request.additionalInfo() == null || request.additionalInfo().isBlank()) {
-            throw new IllegalArgumentException("profile and additionalInfo are required");
+        if (request.profile() == null || !request.hasClarification()) {
+            throw new IllegalArgumentException("profile and clarification answer are required");
         }
         return RequirementAnalysisResponse.of(
-                coordinator.clarifyRequirementAnalysis(taskId, request.profile(), request.additionalInfo()));
+                coordinator.clarifyRequirementAnalysis(taskId, request.profile(), request.clarificationText()));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

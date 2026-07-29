@@ -15,6 +15,7 @@ public record Artifact<T>(
         String agent,
         String skill,
         String taskId,
+        String parentTaskId,
         String createdAt,
         T result,
         List<Evidence> evidence,
@@ -26,9 +27,23 @@ public record Artifact<T>(
                 agent,
                 skill,
                 UUID.randomUUID().toString(),
+                null,
                 Instant.now().toString(),
                 result,
                 evidence,
                 false);
+    }
+
+    public Artifact<T> withParentTaskId(String parentTaskId) {
+        return new Artifact<>(
+                schemaVersion,
+                agent,
+                skill,
+                taskId,
+                parentTaskId,
+                createdAt,
+                result,
+                evidence,
+                reviewed);
     }
 }

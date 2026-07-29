@@ -140,7 +140,8 @@ public class CoordinatorService {
 
         RequirementAnalysisResult result = requirementAnalysisSkill.run(augmentedDescription);
         Artifact<RequirementAnalysisResult> artifact =
-                Artifact.draft(profile + "-agent", "requirement-analysis", result, result.evidence());
+                Artifact.draft(profile + "-agent", "requirement-analysis", result, result.evidence())
+                        .withParentTaskId(sourceTaskId);
         persistence.save(artifact, profile, augmentedDescription, sourceTaskId);
         return artifact;
     }
@@ -169,7 +170,8 @@ public class CoordinatorService {
                 .orElseThrow(() -> new IllegalArgumentException("No input text found for artifact " + sourceTaskId));
         ImpactAnalysisResult result = impactAnalysisSkill.run(requirementText);
         Artifact<ImpactAnalysisResult> artifact =
-                Artifact.draft(profile + "-agent", "impact-analysis", result, result.evidence());
+                Artifact.draft(profile + "-agent", "impact-analysis", result, result.evidence())
+                        .withParentTaskId(sourceTaskId);
         persistence.save(artifact, profile, requirementText, sourceTaskId);
         return artifact;
     }
@@ -182,6 +184,9 @@ public class CoordinatorService {
         requireSkillAllowed(profile, "test-case-gen");
         TestCaseGenResult result = testCaseGenSkill.run(target);
         Artifact<TestCaseGenResult> artifact = Artifact.draft(profile + "-agent", "test-case-gen", result, result.evidence());
+        if (parentTaskId != null) {
+            artifact = artifact.withParentTaskId(parentTaskId);
+        }
         persistence.save(artifact, profile, target, parentTaskId);
         return artifact;
     }
@@ -270,7 +275,8 @@ public class CoordinatorService {
                 evidence);
 
         Artifact<TestScopeReviewResult> artifact =
-                Artifact.draft(profile + "-agent", "test-scope-review", result, result.evidence());
+                Artifact.draft(profile + "-agent", "test-scope-review", result, result.evidence())
+                        .withParentTaskId(sourceTaskId);
         persistence.save(artifact, profile, "Reviewed test scope for " + sourceTaskId, sourceTaskId);
         return artifact;
     }
@@ -315,7 +321,8 @@ public class CoordinatorService {
                 sourceTaskId, (Map<String, Object>) resultMap, children, assumptions);
 
         Artifact<TimelineEstimationResult> artifact =
-                Artifact.draft(profile + "-agent", "timeline-estimation", result, result.evidence());
+                Artifact.draft(profile + "-agent", "timeline-estimation", result, result.evidence())
+                        .withParentTaskId(sourceTaskId);
         persistence.save(artifact, profile, "Timeline estimate for " + sourceTaskId, sourceTaskId);
         return artifact;
     }
@@ -375,7 +382,8 @@ public class CoordinatorService {
                 combinedEvidence(requirement, impact, tests));
 
         Artifact<HandoffSummaryResult> artifact =
-                Artifact.draft(profile + "-agent", "handoff-summary", result, result.evidence());
+                Artifact.draft(profile + "-agent", "handoff-summary", result, result.evidence())
+                        .withParentTaskId(impactTaskId);
         persistence.save(artifact, profile,
                 "Handoff summary for requirement " + requirementTaskId + " and impact " + impactTaskId,
                 impactTaskId);

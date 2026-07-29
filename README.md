@@ -1,13 +1,15 @@
 # mini-Project
 
-Software Analyst Workflow Assistant: a review-gated workbench that helps an analyst move from ticket intake to requirement analysis, clarification, impact analysis, test scenarios, and a compiled analyst report.
+Software Analyst Workflow Assistant: a review-gated workbench that helps an analyst move from external work item intake to requirement analysis, clarification, impact analysis, test scenarios, and a compiled analyst report.
 
 The project is not trying to recreate Claude Skills. It uses a small skill layer, MCP-backed project graph, artifact persistence, and human review gates to support the repetitive workflow around software analysis.
 
 ## Workflow
 
 ```text
-Ticket Intake
+Analyst Inbox
+        |
+Ticket Review
         |
 Requirement Analysis
         |
@@ -27,6 +29,8 @@ Analyst Report
 ```text
 Project Graph + Issues
         |
+Connector-style Analyst Inbox
+        |
 Sample Target Project Context
         |
 MCP Tool Layer
@@ -44,11 +48,12 @@ React Workflow UI
 
 - `requirement-analysis`: extracts business rules, ambiguities, missing information, assumptions, analyst concerns, scope clues, confidence, and evidence.
 - Optional LLM-backed requirement analysis: the same skill boundary can use OpenAI Responses API when enabled, while the default remains rule-based for repeatable demos. The LLM prompt now asks for privacy, security, role access, performance, compliance, and testing concerns.
-- Manual/sample ticket intake: captures ticket key, title, priority, reporter, description, acceptance criteria, and comments before analysis.
-- Jira-like dry-run import: imports a sample Jira ticket into Ticket Intake without external writes or credentials.
+- Hermes-style Analyst Inbox: lets the analyst select Jira, email, meeting-note, or manual work items before the AI workflow starts.
+- Manual/sample ticket review: captures source metadata, ticket key, title, priority, reporter, description, acceptance criteria, and comments before analysis.
+- Jira read-only import: imports a Jira issue into Analyst Inbox when credentials are configured; otherwise keeps the sample dry-run importer for demos.
 - MyBanjirCare sample project context: grounds ticket impact analysis in a Laravel/PHP FYP project domain.
 - Codebase-memory backed project context retrieval: impact analysis now asks the indexed MyBanjirCare code graph for relevant methods/classes/files, then supplements with local repository evidence.
-- Clarification API: creates a linked requirement-analysis artifact with the analyst's additional information.
+- Structured clarification tracking: turns missing information and analyst concern questions into answerable items, then creates a linked requirement-analysis artifact.
 - Requirement-to-impact handoff: reviewed requirement artifacts become the source of truth for impact analysis.
 - `impact-analysis`: identifies affected modules, risk notes, rough effort, missing evidence, confidence, and evidence.
 - `test-case-gen`: generates positive, negative, and edge test scenarios from reviewed impact analysis modules.

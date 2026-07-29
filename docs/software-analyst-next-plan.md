@@ -6,14 +6,15 @@ The current platform is mainly a Change Request workflow assistant for Software 
 
 It supports the flow:
 
-1. Capture manual/sample ticket intake details
-2. Analyse what needs to change
-3. Identify missing information and ambiguities
-4. Ask clarification and re-analyse the requirement
-5. Review the requirement before moving forward
-6. Run impact analysis
-7. Generate test scenarios
-8. Compile a handoff summary
+1. Select an incoming work item from the Analyst Inbox
+2. Review mapped ticket/source details
+3. Analyse what needs to change
+4. Identify missing information, ambiguities, and analyst concerns
+5. Ask clarification and re-analyse the requirement
+6. Review the requirement before moving forward
+7. Run impact analysis
+8. Generate test scenarios
+9. Compile a handoff summary
 
 This already covers one important part of a Software Analyst's daily work: handling change requests from requirement understanding until developer or QA handoff.
 
@@ -64,12 +65,25 @@ This is important because real Software Analysts do not only summarise a ticket.
 
 ### 1. Improve Ticket Intake
 
-Status: started.
+Status: started with Hermes-style Analyst Inbox prototype.
 
-The platform now supports a manual/sample ticket intake shape before requirement analysis.
+The platform now supports a connector-style Analyst Inbox before requirement analysis.
+
+It shows sample incoming work items from:
+
+- Jira
+- email
+- meeting notes
+- manual entry
+
+After selecting an item, the analyst reviews the mapped ticket fields before running AI analysis.
 
 It captures:
 
+- source type
+- source name
+- source URL
+- received time
 - ticket key
 - ticket title
 - priority
@@ -86,10 +100,11 @@ Current Jira-like enhancement:
 - `MBC-204` sample ticket import
 - analyst reviews imported fields before analysis
 - no external Jira write is performed
+- real Jira read-only import when `JIRA_ENABLED`, `JIRA_BASE_URL`, `JIRA_EMAIL`, and `JIRA_API_TOKEN` are configured
+- imported Jira tickets are added through Analyst Inbox before Ticket Review
 
 Next Jira phases:
 
-- real Jira read-only import by issue key or URL
 - reviewed Jira comment/write-back after handoff summary approval
 
 ### 2. Connect Real Project Context
@@ -173,14 +188,20 @@ This is useful because Software Analysts often prepare or support UAT and testin
 
 ### 6. Improve Clarification Tracking
 
-The current platform can ask clarification and re-analyse.
+Status: implemented as the first structured clarification slice.
 
-The next step is to track clarification more clearly.
+The platform can ask clarification and re-analyse, and the UI now turns missing information plus analyst concern questions into answerable checklist items.
 
-Useful functions:
+Implemented functions:
 
 - show unclear points
 - record stakeholder answer
+- keep an optional general clarification note
+- submit question and answer pairs to the backend
+- save the rerun analysis as a linked requirement-analysis artifact
+
+Future useful functions:
+
 - show what changed after clarification
 - mark requirement as ready
 

@@ -1,0 +1,149 @@
+<svg width="1440" height="1080" viewBox="0 0 1440 1080" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      .title { font: 600 30px Inter, Arial, sans-serif; fill: #16212f; }
+      .h2 { font: 600 20px Inter, Arial, sans-serif; fill: #16212f; }
+      .h3 { font: 600 16px Inter, Arial, sans-serif; fill: #16212f; }
+      .body { font: 400 14px Inter, Arial, sans-serif; fill: #4c5a6e; }
+      .small { font: 500 12px Inter, Arial, sans-serif; fill: #8793a3; }
+      .label { font: 700 11px Inter, Arial, sans-serif; fill: #8793a3; letter-spacing: 1px; }
+      .button { font: 700 14px Inter, Arial, sans-serif; fill: #ffffff; }
+      .buttonGhost { font: 700 14px Inter, Arial, sans-serif; fill: #16212f; }
+      .pill { font: 700 12px Inter, Arial, sans-serif; }
+      .mono { font: 500 12px Consolas, monospace; }
+    </style>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#101828" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+
+  <rect width="1440" height="1080" fill="#f3f5f8"/>
+
+  <rect x="0" y="0" width="1440" height="68" fill="#ffffff"/>
+  <line x1="0" y1="67.5" x2="1440" y2="67.5" stroke="#dde2e9"/>
+  <rect x="28" y="17" width="34" height="34" rx="9" fill="#0b5f57"/>
+  <text x="45" y="40" text-anchor="middle" font-family="Inter, Arial" font-size="17" font-weight="700" fill="#fff">A</text>
+  <text x="76" y="27" class="h3">Analyst Workbench</text>
+  <text x="76" y="47" class="small">Software Analyst workflow assistant</text>
+  <rect x="1282" y="18" width="130" height="32" rx="16" fill="#f3f5f8" stroke="#dde2e9"/>
+  <circle cx="1302" cy="34" r="4" fill="#0b5f57"/>
+  <text x="1314" y="38" class="pill" fill="#4c5a6e">Backend up</text>
+
+  <rect x="0" y="68" width="292" height="1012" fill="#ffffff"/>
+  <line x1="291.5" y1="68" x2="291.5" y2="1080" stroke="#dde2e9"/>
+  <text x="24" y="112" class="label">ANALYST WORKFLOW</text>
+
+  <g transform="translate(24 136)">
+    <rect width="244" height="68" rx="10" fill="#ffffff"/>
+    <rect x="12" y="17" width="34" height="34" rx="8" fill="#0b5f57"/>
+    <text x="29" y="39" text-anchor="middle" font-family="Inter, Arial" font-size="13" font-weight="700" fill="#fff">1</text>
+    <text x="58" y="29" class="h3">Analyst Inbox</text>
+    <text x="58" y="49" class="small">Imported from Jira</text>
+  </g>
+  <g transform="translate(24 216)">
+    <rect width="244" height="72" rx="10" fill="#e6f2f0" stroke="#0b5f57" stroke-opacity="0.28"/>
+    <rect x="12" y="19" width="34" height="34" rx="8" fill="#ffffff" stroke="#0b5f57"/>
+    <text x="29" y="41" text-anchor="middle" font-family="Inter, Arial" font-size="13" font-weight="700" fill="#084942">2</text>
+    <text x="58" y="31" class="h3" fill="#084942">Ticket Review</text>
+    <text x="58" y="51" class="small">Needs clarification</text>
+  </g>
+  <g transform="translate(24 304)">
+    <rect width="244" height="68" rx="10" fill="#ffffff"/>
+    <rect x="12" y="17" width="34" height="34" rx="8" fill="#ffffff" stroke="#c2c9d4"/>
+    <text x="29" y="39" text-anchor="middle" font-family="Inter, Arial" font-size="13" font-weight="700" fill="#4c5a6e">3</text>
+    <text x="58" y="29" class="h3">Impact Analysis</text>
+    <text x="58" y="49" class="small">Pending</text>
+  </g>
+  <g transform="translate(24 384)">
+    <rect width="244" height="68" rx="10" fill="#ffffff"/>
+    <rect x="12" y="17" width="34" height="34" rx="8" fill="#ffffff" stroke="#c2c9d4"/>
+    <text x="29" y="39" text-anchor="middle" font-family="Inter, Arial" font-size="13" font-weight="700" fill="#4c5a6e">4</text>
+    <text x="58" y="29" class="h3">Test Scenarios</text>
+    <text x="58" y="49" class="small">Pending</text>
+  </g>
+  <g transform="translate(24 464)">
+    <rect width="244" height="68" rx="10" fill="#ffffff"/>
+    <rect x="12" y="17" width="34" height="34" rx="8" fill="#ffffff" stroke="#c2c9d4"/>
+    <text x="29" y="39" text-anchor="middle" font-family="Inter, Arial" font-size="13" font-weight="700" fill="#4c5a6e">5</text>
+    <text x="58" y="29" class="h3">Handoff Summary</text>
+    <text x="58" y="49" class="small">Pending</text>
+  </g>
+  <line x1="24" y1="576" x2="268" y2="576" stroke="#dde2e9"/>
+  <text x="24" y="616" class="body">
+    <tspan x="24" dy="0">One continuous Jira ticket to</tspan>
+    <tspan x="24" dy="22">requirement, clarification, impact,</tspan>
+    <tspan x="24" dy="22">test, and handoff pipeline.</tspan>
+  </text>
+  <rect x="24" y="740" width="244" height="42" rx="8" fill="#ffffff" stroke="#dde2e9"/>
+  <text x="146" y="766" text-anchor="middle" class="buttonGhost">Start new analysis</text>
+
+  <g transform="translate(344 112)">
+    <text x="0" y="0" class="label">STEP 2 - TICKET REVIEW</text>
+    <text x="0" y="52" class="title">Review imported Jira ticket and analyse requirement gaps</text>
+    <text x="0" y="84" class="body">The platform imports ticket context, runs requirement analysis, and turns missing information into structured clarification items before impact analysis starts.</text>
+
+    <rect x="0" y="122" width="1040" height="116" rx="12" fill="#ffffff" stroke="#dde2e9" filter="url(#shadow)"/>
+    <line x1="0" y1="122" x2="0" y2="238" stroke="#0b5f57" stroke-width="4"/>
+    <text x="22" y="154" class="label">TARGET PROJECT</text>
+    <text x="22" y="182" class="h2">MyBanjirCare</text>
+    <text x="22" y="206" class="body">Laravel 10 / PHP 8.1</text>
+    <g transform="translate(294 146)">
+      <rect width="96" height="28" rx="14" fill="#e6f2f0"/><text x="48" y="18" text-anchor="middle" class="pill" fill="#084942">Aid Request</text>
+      <rect x="106" width="88" height="28" rx="14" fill="#e6f2f0"/><text x="150" y="18" text-anchor="middle" class="pill" fill="#084942">Donation</text>
+      <rect x="204" width="108" height="28" rx="14" fill="#e6f2f0"/><text x="258" y="18" text-anchor="middle" class="pill" fill="#084942">Flood Report</text>
+      <rect x="322" width="136" height="28" rx="14" fill="#e6f2f0"/><text x="390" y="18" text-anchor="middle" class="pill" fill="#084942">Collection Center</text>
+      <rect x="468" width="96" height="28" rx="14" fill="#e6f2f0"/><text x="516" y="18" text-anchor="middle" class="pill" fill="#084942">Auth / OTP</text>
+    </g>
+
+    <rect x="0" y="262" width="1040" height="130" rx="12" fill="#ffffff" stroke="#dde2e9" filter="url(#shadow)"/>
+    <line x1="0" y1="262" x2="0" y2="392" stroke="#0b5f57" stroke-width="4"/>
+    <rect x="22" y="284" width="64" height="28" rx="14" fill="#e6f2f0"/>
+    <text x="54" y="302" text-anchor="middle" class="pill" fill="#084942">Jira</text>
+    <rect x="96" y="284" width="74" height="28" rx="14" fill="#eef1f5"/>
+    <text x="133" y="302" text-anchor="middle" class="pill" fill="#4c5a6e">KAN-1</text>
+    <rect x="180" y="284" width="110" height="28" rx="14" fill="#fbf1dc"/>
+    <text x="235" y="302" text-anchor="middle" class="pill" fill="#8a5a00">High priority</text>
+    <text x="22" y="342" class="h2">Allow donors to filter available aid requests by city and urgency</text>
+    <text x="22" y="370" class="body">Donor should be able to filter approved aid request records by city, category, and urgency before responding to help.</text>
+
+    <rect x="0" y="416" width="1040" height="438" rx="12" fill="#ffffff" stroke="#dde2e9" filter="url(#shadow)"/>
+    <text x="26" y="456" class="h2">AI Requirement Analysis</text>
+    <rect x="282" y="434" width="176" height="30" rx="15" fill="#fbf1dc"/>
+    <text x="370" y="454" text-anchor="middle" class="pill" fill="#8a5a00">NEEDS CLARIFICATION</text>
+    <rect x="470" y="434" width="198" height="30" rx="15" fill="#e6f2f0"/>
+    <text x="569" y="454" text-anchor="middle" class="pill" fill="#084942">requirement-analysis skill</text>
+
+    <rect x="26" y="486" width="480" height="144" rx="10" fill="#ffffff" stroke="#dde2e9"/>
+    <text x="46" y="520" class="h3">Business rules found</text>
+    <text x="46" y="548" class="body">
+      <tspan x="46" dy="0">Donor can filter approved aid request records by</tspan>
+      <tspan x="46" dy="22">city, category, and urgency before choosing a</tspan>
+      <tspan x="46" dy="22">request to help.</tspan>
+    </text>
+    <rect x="532" y="486" width="482" height="144" rx="10" fill="#ffffff" stroke="#dde2e9"/>
+    <text x="552" y="520" class="h3">Analyst concerns</text>
+    <text x="552" y="548" class="body">
+      <tspan x="552" dy="0">Confirm whether donor filtering exposes personal</tspan>
+      <tspan x="552" dy="22">aid request data and whether filters also apply</tspan>
+      <tspan x="552" dy="22">to admin monitoring.</tspan>
+    </text>
+
+    <rect x="26" y="650" width="988" height="70" rx="10" fill="#ffffff" stroke="#dde2e9"/>
+    <rect x="46" y="672" width="126" height="24" rx="6" fill="#fbf1dc"/>
+    <text x="109" y="689" text-anchor="middle" class="mono" fill="#8a5a00">requirement</text>
+    <text x="190" y="690" class="body" fill="#16212f">Evidence: requirement text imported from Jira ticket KAN-1</text>
+
+    <rect x="26" y="740" width="988" height="92" rx="10" fill="#ffffff" stroke="#8a5a00"/>
+    <text x="46" y="772" class="h3">Structured clarification item</text>
+    <text x="46" y="800" class="body">Missing information: Should filters update through page reload or AJAX, and should the same filter apply to admin monitoring later?</text>
+    <rect x="46" y="814" width="928" height="36" rx="8" fill="#ffffff" stroke="#dde2e9"/>
+    <text x="62" y="837" class="small">Analyst answer: Filters should apply to approved aid requests only; UI update method to confirm with developer.</text>
+
+    <rect x="0" y="882" width="190" height="42" rx="8" fill="#0b5f57"/>
+    <text x="95" y="908" text-anchor="middle" class="button">Submit Clarification</text>
+    <rect x="206" y="882" width="250" height="42" rx="8" fill="#ffffff" stroke="#dde2e9"/>
+    <text x="331" y="908" text-anchor="middle" class="buttonGhost">Mark as reviewed and continue</text>
+    <rect x="472" y="889" width="104" height="30" rx="15" fill="#faece9"/>
+    <text x="524" y="909" text-anchor="middle" class="pill" fill="#9c2c1f">Unreviewed</text>
+  </g>
+</svg>

@@ -9,9 +9,9 @@ See [../docs/architecture.md](../docs/architecture.md) for the full design.
 | Endpoint | Purpose |
 |---|---|
 | `GET /api/health` | Backend health check |
-| `POST /api/integrations/jira/import` | Dry-run Jira-like ticket import for Ticket Intake |
-| `POST /api/skills/requirement-analysis` | Analyze a requirement or ticket intake payload |
-| `POST /api/artifacts/{taskId}/clarify` | Add clarification and create a linked requirement artifact |
+| `POST /api/integrations/jira/import` | Read-only Jira issue import for Analyst Inbox, with dry-run fallback when Jira is not configured |
+| `POST /api/skills/requirement-analysis` | Analyze a requirement or connector inbox ticket payload |
+| `POST /api/artifacts/{taskId}/clarify` | Add structured clarification answers and create a linked requirement artifact |
 | `PATCH /api/artifacts/{taskId}/review` | Mark an artifact as reviewed |
 | `POST /api/artifacts/{taskId}/handoff/impact-analysis` | Run impact analysis from a reviewed requirement artifact |
 | `POST /api/artifacts/{taskId}/handoff/test-case-gen` | Generate tests from a reviewed impact artifact module |
@@ -28,9 +28,22 @@ Legacy direct skill endpoints still exist for free-form use:
 - `POST /api/skills/impact-analysis/from-pr`
 - `POST /api/skills/test-case-gen`
 
-Jira import is currently a dry-run sample importer. It does not call Jira yet; real Jira read-only import is the next integration phase.
+Jira import is read-only. When `integrations.jira.enabled=true` and Jira credentials are configured, it fetches an existing issue by key or URL and maps summary, description, priority, reporter, comments, source URL, and source timestamp into the platform's ticket shape. When Jira is not configured, it keeps the dry-run sample importer so local demos still work.
+
+Required for read-only Jira import:
+
+- `JIRA_ENABLED=true`
+- `JIRA_BASE_URL=https://your-site.atlassian.net`
+- `JIRA_EMAIL=your-email@example.com`
+- `JIRA_API_TOKEN=...`
+
+Optional:
+
+- `JIRA_ACCEPTANCE_CRITERIA_FIELD=customfield_12345`
 
 Requirement analysis is rule-based by default for stable local demos. The same `RequirementAnalysisSynthesizer` boundary can be switched to an LLM-backed implementation without changing the controller, coordinator, artifact model, or frontend workflow. Both paths now expose analyst concerns so requirement intake can flag privacy, role access, performance, and testing questions before impact analysis.
+
+The request can also include connector-style source metadata (`source_type`, `source_name`, `source_url`, `received_at`). These fields are folded into the stored analysis input so an imported Jira ticket, email, or meeting note keeps its origin during the workflow.
 
 ## Agent Layer
 
