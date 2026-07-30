@@ -89,6 +89,7 @@ public class RuleBasedImpactAnalysisSynthesizer implements ImpactAnalysisSynthes
             evidence.add(new Evidence(r.note(), r.evidence()));
         }
 
-        return new ImpactAnalysisResult(affectedModules, riskNotes, riskLevel, effort, missingEvidence, confidence, evidence);
+        return new ImpactAnalysisResult(
+                affectedModules, riskNotes, riskLevel, effort, missingEvidence, confidence, evidence, List.of());
     }
 }

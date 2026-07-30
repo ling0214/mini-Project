@@ -41,7 +41,7 @@ public class JiraTicketImportService {
                     "MBC-204",
                     "Allow donors to filter available aid requests by city and urgency",
                     "High",
-                    "FYP Supervisor",
+                    " Supervisor",
                     "Donor should be able to filter approved aid request records by city, category, and urgency before responding to help.",
                     "Given a donor is browsing available aid requests, when the donor selects city, category, or urgency filters, then the page only shows matching approved aid requests.",
                     "Use page reload first. AJAX filtering can be treated as a future enhancement unless the stakeholder confirms it is required now.",

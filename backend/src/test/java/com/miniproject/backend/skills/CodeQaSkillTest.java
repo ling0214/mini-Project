@@ -9,7 +9,9 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class CodeQaSkillTest {
@@ -44,6 +46,8 @@ class CodeQaSkillTest {
         ProjectGraphClient graphClient = mock(ProjectGraphClient.class);
         when(graphClient.getEndpointInfo(anyString())).thenReturn(Map.of("found", false, "name", "nope"));
         when(graphClient.searchIssues(anyString())).thenReturn(Map.of("query", "x", "matches", List.of(), "count", 0));
+        when(graphClient.searchProjectContext(anyString(), anyString(), any(Integer.class)))
+                .thenReturn(Map.of("project", "MyBanjirCare", "matches", List.of(), "count", 0));
 
         AnswerSynthesizer synthesizer = mock(AnswerSynthesizer.class);
         when(synthesizer.synthesize(anyString(), any(), any())).thenAnswer(invocation -> {
@@ -57,6 +61,30 @@ class CodeQaSkillTest {
         CodeQaResult result = skill.run("what does totally_unknown_function do?");
 
         assertThat(result.ungrounded()).containsExactly("nothing resolved");
+    }
+
+    @Test
+    void searchesProjectContextForNaturalLanguageRepoQuestions() {
+        ProjectGraphClient graphClient = mock(ProjectGraphClient.class);
+        when(graphClient.getEndpointInfo(anyString())).thenReturn(Map.of("found", false, "name", "nope"));
+        when(graphClient.searchIssues(anyString())).thenReturn(Map.of("query", "x", "matches", List.of(), "count", 0));
+        when(graphClient.searchProjectContext(eq("MyBanjirCare"), anyString(), eq(8)))
+                .thenReturn(Map.of(
+                        "project", "MyBanjirCare",
+                        "matches", List.of(Map.of(
+                                "name", "DonationController",
+                                "file", "app/Http/Controllers/DonationController.php",
+                                "line", 42,
+                                "reason", "codebase-memory matched class DonationController as relevant to this ticket")),
+                        "count", 1));
+
+        CodeQaSkill skill = new CodeQaSkill(graphClient, new RuleBasedAnswerSynthesizer());
+
+        CodeQaResult result = skill.run("What should I check before changing donation status?");
+
+        assertThat(result.answer()).contains("DonationController");
+        assertThat(result.evidence()).extracting("source").contains("app/Http/Controllers/DonationController.php:42");
+        verify(graphClient).searchProjectContext(eq("MyBanjirCare"), anyString(), eq(8));
     }
 
     @Test
@@ -93,5 +121,25 @@ class CodeQaSkillTest {
 
         assertThat(result.ungrounded()).isNotEmpty();
         assertThat(result.evidence()).isEmpty();
+    }
+
+    @Test
+    void ruleBasedSynthesizerUsesProjectContextMatchesAsEvidence() {
+        RuleBasedAnswerSynthesizer synthesizer = new RuleBasedAnswerSynthesizer();
+
+        CodeQaResult result = synthesizer.synthesize(
+                "What handles donation status?",
+                List.of(),
+                Map.of(
+                        "matches", List.of(),
+                        "project_context", Map.of(
+                                "matches", List.of(Map.of(
+                                        "name", "DonationController",
+                                        "file", "app/Http/Controllers/DonationController.php",
+                                        "line", 42,
+                                        "reason", "codebase-memory matched class DonationController as relevant to this ticket")))));
+
+        assertThat(result.answer()).contains("Relevant project context").contains("DonationController");
+        assertThat(result.evidence()).extracting("source").contains("app/Http/Controllers/DonationController.php:42");
     }
 }

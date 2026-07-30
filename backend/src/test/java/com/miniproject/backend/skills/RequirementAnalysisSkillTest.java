@@ -61,7 +61,7 @@ class RequirementAnalysisSkillTest {
                 Ticket key: MBC-204
                 Title: Allow donors to filter available aid requests by city and urgency
                 Priority: High
-                Reporter: FYP Supervisor
+                Reporter:  Supervisor
 
                 Description:
                 Donor should be able to filter approved aid request records by city, category, and urgency.
@@ -78,7 +78,7 @@ class RequirementAnalysisSkillTest {
                 Ticket key: MBC-204
                 Title: Allow donors to filter available aid requests by city and urgency
                 Priority: High
-                Reporter: FYP Supervisor
+                Reporter:  Supervisor
 
                 Description:
                 Donor should be able to filter approved aid request records by city, category, and urgency before responding to help.

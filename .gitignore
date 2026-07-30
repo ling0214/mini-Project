@@ -4,7 +4,10 @@ target/
 *.jar
 !.mvn/wrapper/maven-wrapper.jar
 backend/data/
+backend/logs/
 backend-run.*.log
+backend-dev.log
+frontend-dev.log
 
 # Python
 __pycache__/
@@ -34,3 +37,7 @@ Thumbs.db
 *.pem
 **/application-local.yml
 **/secrets.*
+
+# Local graph experiments
+graphify-workspaces/
+graphify-out/

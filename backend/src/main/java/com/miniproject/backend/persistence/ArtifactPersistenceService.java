@@ -4,11 +4,15 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.miniproject.backend.artifact.Artifact;
 import com.miniproject.backend.artifact.Evidence;
+import com.miniproject.backend.memory.MemoryCardService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 
 /**
@@ -22,10 +26,13 @@ public class ArtifactPersistenceService {
 
     private final AnalysisArtifactRepository repository;
     private final ObjectMapper objectMapper;
+    private final MemoryCardService memoryCardService;
 
-    public ArtifactPersistenceService(AnalysisArtifactRepository repository, ObjectMapper objectMapper) {
+    public ArtifactPersistenceService(
+            AnalysisArtifactRepository repository, ObjectMapper objectMapper, MemoryCardService memoryCardService) {
         this.repository = repository;
         this.objectMapper = objectMapper;
+        this.memoryCardService = memoryCardService;
     }
 
     public <T> void save(Artifact<T> artifact, String profile, String inputText) {
@@ -82,10 +89,38 @@ public class ArtifactPersistenceService {
         return repository.findByParentTaskId(parentTaskId).stream().map(this::toArtifact).toList();
     }
 
+    /**
+     * Walks parentTaskId upward from taskId to the root, oldest-first. Safe to
+     * call on any artifact chain (not just requirement-analysis/clarify) since
+     * it only follows links, but requirement-analysis is the only skill that
+     * currently links to a same-skill parent (Section: clarifyRequirementAnalysis).
+     */
+    @Transactional(readOnly = true)
+    public List<ChainEntry> findClarificationChain(String taskId) {
+        List<ChainEntry> chain = new ArrayList<>();
+        String currentId = taskId;
+        while (currentId != null) {
+            String lookupId = currentId;
+            AnalysisArtifactEntity entity = repository.findById(lookupId)
+                    .orElseThrow(() -> new NoSuchElementException("No artifact found for task_id " + lookupId));
+            chain.add(new ChainEntry(
+                    entity.getTaskId(), entity.getSkill(), entity.getCreatedAt(), entity.isReviewed(),
+                    entity.getInputText(), entity.getResultJson()));
+            currentId = entity.getParentTaskId();
+        }
+        Collections.reverse(chain);
+        return chain;
+    }
+
+    public record ChainEntry(
+            String taskId, String skill, Instant createdAt, boolean reviewed, String inputText, String resultJson) {
+    }
+
     @Transactional
     public Optional<Artifact<Object>> markReviewed(String taskId) {
         return repository.findById(taskId).map(entity -> {
             entity.markReviewed(Instant.now());
+            memoryCardService.recordReviewed(entity.getTaskId(), entity.getSkill(), entity.getResultJson());
             return toArtifact(entity);
         });
     }

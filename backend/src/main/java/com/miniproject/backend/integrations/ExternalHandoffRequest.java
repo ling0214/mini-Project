@@ -5,5 +5,6 @@ public record ExternalHandoffRequest(
         String summary,
         String description,
         String prUrl,
+        String jiraIssueKey,
         Boolean dryRun) {
 }

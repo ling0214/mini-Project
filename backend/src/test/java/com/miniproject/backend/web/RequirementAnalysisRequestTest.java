@@ -20,7 +20,8 @@ class RequirementAnalysisRequestTest {
                 "https://jira.example.local/browse/PAY-102",
                 "Today 09:30",
                 "Given a customer is paying, when OTP is valid, then payment can continue.",
-                "Stakeholder asked to keep existing card validation.");
+                "Stakeholder asked to keep existing card validation.",
+                null);
 
         assertThat(request.analysisInput())
                 .contains("Ticket key: PAY-102")
@@ -50,8 +51,31 @@ class RequirementAnalysisRequestTest {
                 null,
                 null,
                 null,
+                null,
                 null);
 
         assertThat(request.analysisInput()).isEqualTo("Customer must be able to update payment method.");
+    }
+
+    @Test
+    void includesManuallyPastedCodeSnippetLabeledDistinctlyFromAutomatedScan() {
+        RequirementAnalysisRequest request = new RequirementAnalysisRequest(
+                "software-analyst",
+                "Donation status should update when payment confirms.",
+                null, null, null, null, null, null, null, null, null, null,
+                "public function markPaid(Donation $donation) { $donation->status = 'paid'; }");
+
+        assertThat(request.analysisInput())
+                .contains("Code evidence:")
+                .contains("public function markPaid(Donation $donation)");
+    }
+
+    @Test
+    void codeSnippetAloneWithNoOtherFieldsStillProducesStructuredInput() {
+        RequirementAnalysisRequest request = new RequirementAnalysisRequest(
+                "software-analyst", null, null, null, null, null, null, null, null, null, null, null,
+                "class Donation { public $status; }");
+
+        assertThat(request.analysisInput()).contains("Code evidence:\nclass Donation");
     }
 }

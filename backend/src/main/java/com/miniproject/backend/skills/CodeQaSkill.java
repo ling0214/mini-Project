@@ -1,12 +1,17 @@
 package com.miniproject.backend.skills;
 
 import com.miniproject.backend.mcp.ProjectGraphClient;
+import com.miniproject.backend.workspace.ProjectWorkspaceRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -28,10 +33,23 @@ public class CodeQaSkill {
 
     private final ProjectGraphClient graphClient;
     private final AnswerSynthesizer synthesizer;
+    private final ProjectWorkspaceRepository workspaceRepository;
+    private final String fallbackProjectName;
 
-    public CodeQaSkill(ProjectGraphClient graphClient, AnswerSynthesizer synthesizer) {
+    @Autowired
+    public CodeQaSkill(
+            ProjectGraphClient graphClient,
+            AnswerSynthesizer synthesizer,
+            ProjectWorkspaceRepository workspaceRepository,
+            @Value("${analysis.target-project.name:MyBanjirCare}") String fallbackProjectName) {
         this.graphClient = graphClient;
         this.synthesizer = synthesizer;
+        this.workspaceRepository = workspaceRepository;
+        this.fallbackProjectName = fallbackProjectName;
+    }
+
+    public CodeQaSkill(ProjectGraphClient graphClient, AnswerSynthesizer synthesizer) {
+        this(graphClient, synthesizer, null, "MyBanjirCare");
     }
 
     public CodeQaResult run(String question) {
@@ -40,9 +58,32 @@ public class CodeQaSkill {
                 .filter(info -> Boolean.TRUE.equals(info.get("found")))
                 .toList();
 
-        Map<String, Object> issueSearch = graphClient.searchIssues(question);
+        Map<String, Object> issueSearch = new HashMap<>(graphClient.searchIssues(question));
+        Map<String, Object> projectContext = searchActiveProjectContext(question);
+        if (!projectContext.isEmpty()) {
+            issueSearch.put("project_context", projectContext);
+        }
 
         return synthesizer.synthesize(question, resolvedEndpoints, issueSearch);
+    }
+
+    private Map<String, Object> searchActiveProjectContext(String question) {
+        String project = activeProjectName().orElse(fallbackProjectName);
+        if (project == null || project.isBlank()) {
+            return Map.of();
+        }
+        try {
+            return graphClient.searchProjectContext(project, question, 8);
+        } catch (RuntimeException e) {
+            return Map.of("project", project, "matches", List.of(), "count", 0, "error", e.getMessage());
+        }
+    }
+
+    private Optional<String> activeProjectName() {
+        if (workspaceRepository == null) {
+            return Optional.empty();
+        }
+        return workspaceRepository.findByActiveTrue().map(workspace -> workspace.getName());
     }
 
     private Set<String> extractCandidates(String question) {

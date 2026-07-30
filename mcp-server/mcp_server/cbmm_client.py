@@ -276,6 +276,38 @@ async def cbmm_get_test_coverage(name: str) -> Optional[Dict[str, Any]]:
     return out
 
 
+async def cbmm_get_architecture(
+    project: str, aspects: Optional[List[str]] = None, path: Optional[str] = None
+) -> Dict[str, Any]:
+    """High-level architecture overview for `project` — packages, layers, and
+    inter-package call boundaries. Feeds ArchitectureDiagramService's Mermaid
+    generation (fast-onboarding "gen diagram" feature).
+    """
+    args: Dict[str, Any] = {"project": project}
+    if aspects:
+        args["aspects"] = aspects
+    if path:
+        args["path"] = path
+    return await _call_tool("get_architecture", args)
+
+
+async def cbmm_index_repository(repo_path: str, name: Optional[str] = None, mode: str = "fast") -> Dict[str, Any]:
+    """Index a repo into codebase-memory-mcp so search_project_context has a
+    real graph for it — declaring a workspace (ProjectWorkspaceService) has no
+    effect on graph-based retrieval until this has run at least once for that
+    project name. `fast` mode skips similarity/semantic edges for a quicker
+    first pass; still runs full LSP call/usage resolution.
+    """
+    args: Dict[str, Any] = {"repo_path": repo_path, "mode": mode}
+    if name:
+        args["name"] = name
+    return await _call_tool("index_repository", args)
+
+
+async def cbmm_index_status(project: str) -> Dict[str, Any]:
+    return await _call_tool("index_status", {"project": project})
+
+
 async def cbmm_search_project_context(project: str, query: str, limit: int = 12) -> Dict[str, Any]:
     """Retrieve likely affected code context from a selected codebase-memory project.
 

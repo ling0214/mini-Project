@@ -95,6 +95,36 @@ async def search_project_context(project: str, query: str, limit: int = 12) -> d
     return await cbmm_client.cbmm_search_project_context(project, query, limit)
 
 
+@mcp.tool()
+async def get_architecture(project: str, aspects: list[str] | None = None, path: str | None = None) -> dict:
+    """High-level architecture overview for a codebase-memory project:
+    packages, layers, inter-package call boundaries, routes, hotspots.
+
+    Used to generate the fast-onboarding architecture diagram — the backend
+    turns `layers` + `boundaries` into a Mermaid flowchart so a newly
+    connected project can be understood at a glance instead of file-by-file.
+    """
+    return await cbmm_client.cbmm_get_architecture(project, aspects=aspects, path=path)
+
+
+@mcp.tool()
+async def index_project(repo_path: str, name: str, mode: str = "fast") -> dict:
+    """Index a repo into codebase-memory-mcp under `name` so search_project_context
+    can find it. Called by ProjectWorkspaceService right after an analyst
+    declares a new project — this is what actually builds the graph; declaring
+    a workspace on its own only repoints the local keyword-scan fallback.
+    """
+    return await cbmm_client.cbmm_index_repository(repo_path, name, mode=mode)
+
+
+@mcp.tool()
+async def project_index_status(project: str) -> dict:
+    """Indexing status for `project` (e.g. queued/running/ready) so the
+    frontend can poll after declaring a workspace instead of blocking on it.
+    """
+    return await cbmm_client.cbmm_index_status(project)
+
+
 def main() -> None:
     mcp.run()
 

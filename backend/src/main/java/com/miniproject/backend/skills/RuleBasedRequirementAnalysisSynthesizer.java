@@ -79,6 +79,11 @@ public class RuleBasedRequirementAnalysisSynthesizer implements RequirementAnaly
         List<String> assumptions = businessRules.isEmpty()
                 ? List.of("No explicit business rule (must/should/shall/unless/...) was stated; assume none beyond what's written.")
                 : List.of();
+        String businessValue = businessValue(lower);
+        RequirementAnalysisResult.ScopeBoundary scopeBoundary =
+                scopeBoundary(candidateAreas, businessRules, assumptions, lower);
+        List<RequirementAnalysisResult.ProjectRisk> projectRisks =
+                projectRisks(analystConcerns, ambiguities, missingInformation);
 
         String confidence = (!ambiguities.isEmpty() || !missingInformation.isEmpty()) ? "low" : "medium";
 
@@ -89,13 +94,136 @@ public class RuleBasedRequirementAnalysisSynthesizer implements RequirementAnaly
 
         return new RequirementAnalysisResult(
                 businessRules,
+                businessValue,
+                scopeBoundary,
                 ambiguities,
                 missingInformation,
                 assumptions,
                 analystConcerns,
+                projectRisks,
                 candidateAreas,
                 confidence,
-                evidence);
+                evidence,
+                List.of());
+    }
+
+    private String businessValue(String lower) {
+        if (containsAny(lower, "donor", "victim", "aid", "request", "flood")) {
+            return "Helps aid-related users complete the operational workflow faster and with clearer access to relevant request data.";
+        }
+        if (containsAny(lower, "notify", "notification", "alert", "email")) {
+            return "Improves operational response time by making important status changes visible to the responsible stakeholders.";
+        }
+        if (containsAny(lower, "report", "export", "dashboard", "csv", "excel")) {
+            return "Improves reporting accuracy and reduces manual analyst effort when preparing stakeholder updates.";
+        }
+        if (containsAny(lower, "payment", "checkout", "promo", "card")) {
+            return "Reduces checkout friction and supports successful customer transactions.";
+        }
+        return "Clarifies the requested business change so the team can decide scope, risk, testing effort, and delivery priority.";
+    }
+
+    private RequirementAnalysisResult.ScopeBoundary scopeBoundary(
+            List<String> candidateAreas, List<String> businessRules, List<String> assumptions, String lower) {
+        List<String> inScope = new ArrayList<>();
+        if (!businessRules.isEmpty()) {
+            inScope.addAll(businessRules);
+        } else if (!candidateAreas.isEmpty()) {
+            inScope.add("Assess and update the mentioned area(s): " + String.join(", ", candidateAreas));
+        } else {
+            inScope.add("Clarify the requested behavior before confirming implementation scope.");
+        }
+
+        List<String> outOfScope = new ArrayList<>();
+        outOfScope.add("Unmentioned screens, workflows, integrations, and historical data migration are out of scope until confirmed.");
+        if (containsAny(lower, "filter", "search", "sort", "list")) {
+            outOfScope.add("Advanced analytics, new report formats, and bulk data export are out of scope unless separately requested.");
+        }
+
+        List<String> dependencies = new ArrayList<>();
+        if (containsAny(lower, "admin", "superadmin", "donor", "victim", "approved", "access", "role")) {
+            dependencies.add("Confirmed role permission matrix from stakeholder or product owner.");
+        }
+        if (containsAny(lower, "filter", "search", "sort", "list", "records", "report")) {
+            dependencies.add("Expected data volume, pagination, and performance target from developer or code owner.");
+        }
+        if (!assumptions.isEmpty()) {
+            dependencies.add("Stakeholder confirmation for assumptions before development handoff.");
+        }
+        dependencies.add("QA/UAT owner confirmation for acceptance and regression coverage.");
+
+        return new RequirementAnalysisResult.ScopeBoundary(inScope, outOfScope, dependencies);
+    }
+
+    private List<RequirementAnalysisResult.ProjectRisk> projectRisks(
+            List<RequirementAnalysisResult.AnalystConcern> analystConcerns,
+            List<RequirementAnalysisResult.Ambiguity> ambiguities,
+            List<String> missingInformation) {
+        List<RequirementAnalysisResult.ProjectRisk> risks = new ArrayList<>();
+        for (RequirementAnalysisResult.AnalystConcern concern : analystConcerns) {
+            risks.add(riskFromConcern(concern));
+        }
+        if (!missingInformation.isEmpty()) {
+            risks.add(new RequirementAnalysisResult.ProjectRisk(
+                    "P2",
+                    "high",
+                    "scope",
+                    "Missing information can delay agreement on project scope and acceptance criteria.",
+                    "Resolve missing items through clarification before review approval.",
+                    "Software Analyst"));
+        }
+        if (!ambiguities.isEmpty()) {
+            risks.add(new RequirementAnalysisResult.ProjectRisk(
+                    "P2",
+                    "high",
+                    "change_control",
+                    "Ambiguous wording may cause stakeholder disagreement or rework after development starts.",
+                    "Record a confirmed decision before impact analysis and testing scope are finalized.",
+                    "Software Analyst"));
+        }
+        if (risks.isEmpty()) {
+            risks.add(new RequirementAnalysisResult.ProjectRisk(
+                    "P3",
+                    "low",
+                    "delivery",
+                    "No critical project risk detected from the requirement text.",
+                    "Continue through impact analysis and QA scope review.",
+                    "Software Analyst"));
+        }
+        return risks;
+    }
+
+    private RequirementAnalysisResult.ProjectRisk riskFromConcern(RequirementAnalysisResult.AnalystConcern concern) {
+        return switch (concern.category()) {
+            case "privacy", "security", "compliance" -> new RequirementAnalysisResult.ProjectRisk(
+                    "P1",
+                    "critical",
+                    concern.category(),
+                    concern.note(),
+                    concern.question(),
+                    "Software Analyst / Product Owner");
+            case "role_access", "availability" -> new RequirementAnalysisResult.ProjectRisk(
+                    "P2",
+                    "high",
+                    concern.category(),
+                    concern.note(),
+                    concern.question(),
+                    "Software Analyst / Developer");
+            case "performance", "data_quality", "audit" -> new RequirementAnalysisResult.ProjectRisk(
+                    "P3",
+                    "medium",
+                    concern.category(),
+                    concern.note(),
+                    concern.question(),
+                    "Developer / QA");
+            default -> new RequirementAnalysisResult.ProjectRisk(
+                    "P3",
+                    concern.severity(),
+                    concern.category(),
+                    concern.note(),
+                    concern.question(),
+                    "QA / Software Analyst");
+        };
     }
 
     private List<RequirementAnalysisResult.AnalystConcern> analystConcerns(String lower, String description) {

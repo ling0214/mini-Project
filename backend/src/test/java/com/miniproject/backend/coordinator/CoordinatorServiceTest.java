@@ -1,14 +1,18 @@
 package com.miniproject.backend.coordinator;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.miniproject.backend.agent.AgentRegistry;
 import com.miniproject.backend.agent.SoftwareAnalystAgent;
 import com.miniproject.backend.artifact.Artifact;
 import com.miniproject.backend.artifact.Evidence;
 import com.miniproject.backend.github.GitHubPrReader;
+import com.miniproject.backend.memory.MemoryCardService;
 import com.miniproject.backend.persistence.ArtifactPersistenceService;
 import com.miniproject.backend.skills.CodeQaSkill;
 import com.miniproject.backend.skills.HandoffSummaryResult;
 import com.miniproject.backend.skills.ImpactAnalysisSkill;
+import com.miniproject.backend.skills.RequirementAnalysisResult;
 import com.miniproject.backend.skills.RequirementAnalysisSkill;
 import com.miniproject.backend.skills.TestCaseGenSkill;
 import com.miniproject.backend.skills.TestScopeReviewResult;
@@ -31,15 +35,94 @@ import static org.mockito.Mockito.when;
 class CoordinatorServiceTest {
 
     private final ArtifactPersistenceService persistence = mock(ArtifactPersistenceService.class);
+    private final ObjectMapper objectMapper =
+            new ObjectMapper().setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
+    private final RequirementAnalysisSkill requirementAnalysisSkill = mock(RequirementAnalysisSkill.class);
+    private final MemoryCardService memoryCardService = mock(MemoryCardService.class);
     private final CoordinatorService coordinator = new CoordinatorService(
             mock(CodeQaSkill.class),
             mock(ImpactAnalysisSkill.class),
             mock(GitHubPrReader.class),
             mock(TestCaseGenSkill.class),
             mock(TimelineEstimationSynthesizer.class),
-            mock(RequirementAnalysisSkill.class),
+            requirementAnalysisSkill,
             persistence,
-            new AgentRegistry(List.of(new SoftwareAnalystAgent())));
+            new AgentRegistry(List.of(new SoftwareAnalystAgent())),
+            objectMapper,
+            memoryCardService);
+
+    @Test
+    void clarificationHistorySingleRoundHasNoAnsweredText() throws Exception {
+        RequirementAnalysisResult result = requirementResult(List.of("Missing OTP expiry rule"));
+        String resultJson = objectMapper.writeValueAsString(result);
+        Artifact<Object> root = artifact("req-1", "requirement-analysis", false, Map.of());
+        when(persistence.findArtifact("req-1")).thenReturn(Optional.of(root));
+        when(persistence.findClarificationChain("req-1")).thenReturn(List.of(
+                new ArtifactPersistenceService.ChainEntry(
+                        "req-1", "requirement-analysis", Instant.now(), false,
+                        "Add OTP verification during login.", resultJson)));
+
+        List<ClarificationHistoryEntry> history = coordinator.clarificationHistory("req-1");
+
+        assertThat(history).hasSize(1);
+        assertThat(history.get(0).clarificationAnswered()).isEmpty();
+        assertThat(history.get(0).missingInformation()).containsExactly("Missing OTP expiry rule");
+    }
+
+    @Test
+    void clarificationHistoryMultiRoundExtractsAnswerPerRound() throws Exception {
+        String round1Json = objectMapper.writeValueAsString(requirementResult(List.of("Missing OTP expiry rule")));
+        String round2Json = objectMapper.writeValueAsString(requirementResult(List.of()));
+        Artifact<Object> latest = artifact("req-2", "requirement-analysis", false, Map.of());
+        when(persistence.findArtifact("req-2")).thenReturn(Optional.of(latest));
+        when(persistence.findClarificationChain("req-2")).thenReturn(List.of(
+                new ArtifactPersistenceService.ChainEntry(
+                        "req-1", "requirement-analysis", Instant.now(), false,
+                        "Add OTP verification during login.", round1Json),
+                new ArtifactPersistenceService.ChainEntry(
+                        "req-2", "requirement-analysis", Instant.now(), false,
+                        "Add OTP verification during login.\n\nClarifications:\nOTP expires after 5 minutes.",
+                        round2Json)));
+
+        List<ClarificationHistoryEntry> history = coordinator.clarificationHistory("req-2");
+
+        assertThat(history).hasSize(2);
+        assertThat(history.get(0).taskId()).isEqualTo("req-1");
+        assertThat(history.get(0).clarificationAnswered()).isEmpty();
+        assertThat(history.get(1).taskId()).isEqualTo("req-2");
+        assertThat(history.get(1).clarificationAnswered()).isEqualTo("OTP expires after 5 minutes.");
+        assertThat(history.get(1).missingInformation()).isEmpty();
+    }
+
+    @Test
+    void requirementAnalysisAttachesSimilarPastChangesFromMemory() {
+        RequirementAnalysisResult skillResult = requirementResult(List.of());
+        when(requirementAnalysisSkill.run("Donor should filter aid requests by city.")).thenReturn(skillResult);
+        com.miniproject.backend.memory.SimilarPastChange pastChange =
+                new com.miniproject.backend.memory.SimilarPastChange("past-1", "Donor filtering change", 3, "2026-01-01T00:00:00Z");
+        when(memoryCardService.findSimilar(eq("requirement-analysis"), eq("Donor should filter aid requests by city."), any()))
+                .thenReturn(List.of(pastChange));
+
+        Artifact<RequirementAnalysisResult> artifact =
+                coordinator.requirementAnalysis("software-analyst", "Donor should filter aid requests by city.");
+
+        assertThat(artifact.result().similarPastChanges()).containsExactly(pastChange);
+    }
+
+    @Test
+    void clarificationHistoryRejectsNonRequirementAnalysisArtifact() {
+        Artifact<Object> impact = artifact("impact-1", "impact-analysis", false, Map.of());
+        when(persistence.findArtifact("impact-1")).thenReturn(Optional.of(impact));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> coordinator.clarificationHistory("impact-1"))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    private static RequirementAnalysisResult requirementResult(List<String> missingInformation) {
+        return new RequirementAnalysisResult(
+                List.of(), "", new RequirementAnalysisResult.ScopeBoundary(List.of(), List.of(), List.of()),
+                List.of(), missingInformation, List.of(), List.of(), List.of(), List.of(), "medium", List.of(), List.of());
+    }
 
     @Test
     void reviewTestScopeCreatesLinkedManagedScopeArtifact() {

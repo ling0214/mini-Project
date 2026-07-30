@@ -1,6 +1,7 @@
 package com.miniproject.backend.web;
 
 import com.miniproject.backend.artifact.Artifact;
+import com.miniproject.backend.coordinator.ClarificationHistoryEntry;
 import com.miniproject.backend.coordinator.CoordinatorService;
 import com.miniproject.backend.integrations.ExternalConnectorException;
 import com.miniproject.backend.integrations.ExternalHandoffRequest;
@@ -154,6 +155,12 @@ public class ArtifactHistoryController {
     @GetMapping("/{taskId}/external-handoffs")
     public List<ExternalHandoffResult> listExternalHandoffs(@PathVariable String taskId) {
         return externalHandoffService.listForArtifact(taskId);
+    }
+
+    @CrossOrigin(origins = "*")
+    @GetMapping("/{taskId}/clarification-history")
+    public List<ClarificationHistoryEntry> clarificationHistory(@PathVariable String taskId) {
+        return coordinator.clarificationHistory(taskId);
     }
 
     @CrossOrigin(origins = "*")
