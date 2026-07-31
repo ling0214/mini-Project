@@ -12,7 +12,8 @@ public record RequirementAnalysisRequest(
         String sourceUrl,
         String receivedAt,
         String acceptanceCriteria,
-        String comments) {
+        String comments,
+        String codeSnippet) {
 
     public String analysisInput() {
         String freeTextDescription = safe(description);
@@ -25,7 +26,8 @@ public record RequirementAnalysisRequest(
                 && safe(sourceUrl).isBlank()
                 && safe(receivedAt).isBlank()
                 && safe(acceptanceCriteria).isBlank()
-                && safe(comments).isBlank()) {
+                && safe(comments).isBlank()
+                && safe(codeSnippet).isBlank()) {
             return freeTextDescription;
         }
 
@@ -41,6 +43,13 @@ public record RequirementAnalysisRequest(
         appendBlock(builder, "Description", freeTextDescription);
         appendBlock(builder, "Acceptance criteria", acceptanceCriteria);
         appendBlock(builder, "Comments / notes", comments);
+        // Manually pasted by the analyst — for environments where the platform
+        // isn't allowed to scan the repo automatically at all (Section: AI
+        // restricted networks), not just "keep it off the cloud". Label kept
+        // short on purpose: this text flows into keyword extraction alongside
+        // the snippet (Section: TextTermExtractor), so a long descriptive
+        // label pollutes potential_affected_areas with its own words.
+        appendBlock(builder, "Code evidence", codeSnippet);
         return builder.toString().trim();
     }
 

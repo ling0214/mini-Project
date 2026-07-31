@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import mermaid from "mermaid";
 import "./styles.css";
+
+mermaid.initialize({ startOnLoad: false, theme: "neutral", securityLevel: "strict" });
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8080";
 const ANALYST_PROFILE = "software-analyst";
@@ -89,6 +92,7 @@ const EMPTY_TICKET = {
   description: "",
   acceptanceCriteria: "",
   comments: "",
+  codeSnippet: "",
 };
 
 const SAMPLE_TICKET = {
@@ -99,7 +103,7 @@ const SAMPLE_TICKET = {
   ticketKey: "MBC-204",
   ticketTitle: "Allow donors to filter available aid requests by city and urgency",
   priority: "High",
-  reporter: "FYP Supervisor",
+  reporter: " Supervisor",
   description:
     "Donor should be able to filter approved aid request records by city, category, and urgency before responding to help.",
   acceptanceCriteria:
@@ -177,19 +181,437 @@ const QUICK_ACTION_EVENT = "analyst-workbench:quick-action";
 
 function App() {
   const [backendStatus, setBackendStatus] = useState("checking");
+  const [view, setView] = useState("home");
+  const [workspace, setWorkspace] = useState(undefined);
 
   useEffect(() => {
     checkBackend(setBackendStatus);
+    loadCurrentWorkspace();
   }, []);
+
+  useEffect(() => {
+    if (workspace?.index_status !== "indexing" && workspace?.graphify_index_status !== "indexing") {
+      return;
+    }
+    const interval = setInterval(loadCurrentWorkspace, 4000);
+    return () => clearInterval(interval);
+  }, [workspace?.index_status, workspace?.graphify_index_status]);
+
+  async function loadCurrentWorkspace() {
+    try {
+      const current = await api("/api/workspace/current");
+      setWorkspace(current || null);
+    } catch {
+      setWorkspace(null);
+    }
+  }
+
+  function enterWorkbench() {
+    setView(workspace ? "workbench" : "connect-project");
+  }
+
+  if (view === "home") {
+    return <HomePage status={backendStatus} onEnter={enterWorkbench} />;
+  }
+
+  if (view === "connect-project") {
+    return (
+      <ConnectProjectScreen
+        onConnected={(next) => {
+          setWorkspace(next);
+          setView("workbench");
+        }}
+        onCancel={() => setView(workspace ? "workbench" : "home")}
+        onActiveRemoved={() => setWorkspace(null)}
+      />
+    );
+  }
+
+  if (view === "diagram") {
+    return (
+      <ProjectOverviewScreen
+        workspace={workspace}
+        onWorkspaceUpdated={setWorkspace}
+        onBack={() => setView("workbench")}
+        onSwitchProject={() => setView("connect-project")}
+      />
+    );
+  }
 
   return (
     <div className="app-shell">
-      <TopBar status={backendStatus} />
-      <AnalystWorkflow />
+      <TopBar
+        status={backendStatus}
+        onHome={() => setView("home")}
+        workspace={workspace}
+        onSwitchProject={() => setView("connect-project")}
+        onViewDiagram={() => setView("diagram")}
+      />
+      <AnalystWorkflow
+        workspace={workspace}
+        onViewProjectOverview={() => setView("diagram")}
+        onSwitchProject={() => setView("connect-project")}
+      />
       <footer className="app-footer">
         API: <code>{API_BASE}</code> · Artifacts, review gate, Jira issue creation, and Bitbucket PR comments are backed by the Spring Boot service.
       </footer>
     </div>
+  );
+}
+
+function ConnectProjectScreen({ onConnected, onCancel, onActiveRemoved }) {
+  const [projects, setProjects] = useState([]);
+  const [name, setName] = useState("");
+  const [repoUrl, setRepoUrl] = useState("");
+  const [localPath, setLocalPath] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [removingId, setRemovingId] = useState(null);
+  const [browserOpen, setBrowserOpen] = useState(false);
+
+  useEffect(() => {
+    loadProjects();
+  }, []);
+
+  function loadProjects() {
+    api("/api/workspace")
+      .then(setProjects)
+      .catch(() => setProjects([]));
+  }
+
+  async function declare() {
+    setError("");
+    if (!name.trim() || !localPath.trim()) {
+      setError("Project name and local repo path are required.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const saved = await api("/api/workspace", {
+        method: "POST",
+        body: { name, repo_url: repoUrl, local_path: localPath },
+      });
+      onConnected(saved);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function activate(id) {
+    setError("");
+    setLoading(true);
+    try {
+      const saved = await api(`/api/workspace/${id}/activate`, { method: "POST" });
+      onConnected(saved);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function remove(project) {
+    if (!window.confirm(`Remove "${project.name}" from declared projects? This does not delete any files.`)) {
+      return;
+    }
+    setError("");
+    setRemovingId(project.id);
+    try {
+      await api(`/api/workspace/${project.id}`, { method: "DELETE" });
+      loadProjects();
+      if (project.active && onActiveRemoved) {
+        onActiveRemoved();
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setRemovingId(null);
+    }
+  }
+
+  const activeProject = projects.find((project) => project.active);
+
+  return (
+    <main className="connect-project-shell">
+      <section className="connect-project-panel">
+        <div className="connect-project-head">
+          <span className="brand-mark">
+            <LogoMark />
+          </span>
+          <div>
+            <strong>Connect a project</strong>
+            <span>Declare which repo impact-analysis should read before entering the workbench.</span>
+          </div>
+        </div>
+
+        <div className={`active-project-banner ${activeProject ? "" : "none"}`}>
+          <span className="active-project-banner-dot" />
+          {activeProject ? (
+            <span>
+              Currently connected: <strong>{activeProject.name}</strong>
+              <span className="active-project-banner-path"> — {activeProject.local_path}</span>
+            </span>
+          ) : (
+            <span>No project is currently connected.</span>
+          )}
+        </div>
+
+        <label className="field-label">Project name</label>
+        <input type="text" value={name} onChange={(event) => setName(event.target.value)} placeholder="MyBanjirCare" />
+
+        <label className="field-label">Local repo path</label>
+        <div className="path-input-row">
+          <input
+            type="text"
+            value={localPath}
+            onChange={(event) => setLocalPath(event.target.value)}
+            placeholder="C:/tmp/MyBanjirCare"
+          />
+          <button className="btn ghost compact" type="button" onClick={() => setBrowserOpen(true)}>
+            Browse…
+          </button>
+        </div>
+        {browserOpen && (
+          <FolderBrowserModal
+            initialPath={localPath}
+            onSelect={(path) => {
+              setLocalPath(path);
+              setBrowserOpen(false);
+            }}
+            onClose={() => setBrowserOpen(false)}
+          />
+        )}
+
+        <label className="field-label">Repo URL (optional, for reference)</label>
+        <input
+          type="text"
+          value={repoUrl}
+          onChange={(event) => setRepoUrl(event.target.value)}
+          placeholder="https://github.com/org/repo"
+        />
+
+        {error && <ErrorBox message={error} />}
+        <div className="action-row">
+          <button className="btn primary" type="button" disabled={loading} onClick={declare}>
+            {loading ? "Connecting..." : "Connect project"}
+          </button>
+          {onCancel && (
+            <button className="btn ghost" type="button" onClick={onCancel}>
+              Cancel
+            </button>
+          )}
+        </div>
+
+        {projects.length > 0 && (
+          <div className="connect-project-history">
+            <label className="field-label">Previously declared projects</label>
+            <ul className="simple-list">
+              {projects.map((project) => (
+                <li key={project.id}>
+                  <div className="connect-project-history-row">
+                    <div>
+                      <strong>{project.name}</strong>
+                      <span>{project.local_path}</span>
+                      <span className={`index-status-tag ${project.index_status}`}>
+                        {indexStatusLabel(project.index_status, project.index_error)}
+                      </span>
+                    </div>
+                    <div className="connect-project-history-actions">
+                      {project.active ? (
+                        <span className="tag good">Active</span>
+                      ) : (
+                        <button
+                          className="btn ghost compact"
+                          type="button"
+                          disabled={loading}
+                          onClick={() => activate(project.id)}
+                        >
+                          Switch to this
+                        </button>
+                      )}
+                      <button
+                        className="btn ghost compact danger"
+                        type="button"
+                        disabled={removingId === project.id}
+                        onClick={() => remove(project)}
+                      >
+                        {removingId === project.id ? "Removing…" : "Remove"}
+                      </button>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
+    </main>
+  );
+}
+
+function FolderBrowserModal({ initialPath, onSelect, onClose }) {
+  const [currentPath, setCurrentPath] = useState("");
+  const [parentPath, setParentPath] = useState(null);
+  const [entries, setEntries] = useState([]);
+  const [isGitRepo, setIsGitRepo] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    load(initialPath || "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function load(path) {
+    setLoading(true);
+    setError("");
+    try {
+      const query = path ? `?path=${encodeURIComponent(path)}` : "";
+      const result = await api(`/api/workspace/browse${query}`);
+      setCurrentPath(result.current_path);
+      setParentPath(result.parent_path);
+      setEntries(result.entries || []);
+      setIsGitRepo(result.current_is_git_repo);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="modal-overlay" role="dialog" aria-modal="true">
+      <div className="folder-browser-modal">
+        <div className="folder-browser-head">
+          <strong>Choose a folder</strong>
+          <button className="btn ghost compact" type="button" onClick={onClose}>
+            Close
+          </button>
+        </div>
+        <div className="folder-browser-path">
+          {isGitRepo && <span className="tag good">Git repo</span>}
+          <code>{currentPath || "…"}</code>
+        </div>
+        {error && <ErrorBox message={error} />}
+        <div className="folder-browser-list">
+          {parentPath && (
+            <button className="folder-browser-item" type="button" disabled={loading} onClick={() => load(parentPath)}>
+              .. (up)
+            </button>
+          )}
+          {entries.map((entry) => (
+            <button
+              key={entry.path}
+              className="folder-browser-item"
+              type="button"
+              disabled={loading}
+              onClick={() => load(entry.path)}
+            >
+              {entry.name}
+              {entry.git_repo && <span className="tag good">git</span>}
+            </button>
+          ))}
+          {!loading && entries.length === 0 && <p className="muted-note">No subfolders here.</p>}
+        </div>
+        <div className="action-row">
+          <button
+            className="btn primary"
+            type="button"
+            disabled={loading || !currentPath}
+            onClick={() => onSelect(currentPath)}
+          >
+            Select this folder
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HomePage({ status, onEnter }) {
+  return (
+    <main className="home-shell">
+      <section className="home-hero">
+        <div className="home-nav">
+          <div className="home-brand">
+            <span className="brand-mark">
+              <LogoMark />
+            </span>
+            <div>
+              <strong>Analyst Workbench</strong>
+              <span>Software Analyst workflow assistant</span>
+            </div>
+          </div>
+          <span className={`connection ${status}`}>
+            <span />
+            {status === "up" ? "Backend up" : status === "down" ? "Backend down" : "Checking backend"}
+          </span>
+        </div>
+
+        <div className="home-hero-grid">
+          <div className="home-copy">
+            <div className="eyebrow">Unified analyst operations</div>
+            <h1>One control center for requirement intake, AI analysis, and delivery handoff.</h1>
+            <p>
+              Monitor Jira, email, meetings, and manual requests in one place, then guide each work item through
+              clarification, impact analysis, testing scope, and handoff without switching between tools.
+            </p>
+            <div className="home-actions">
+              <button className="home-primary-action" type="button" onClick={onEnter}>
+                Enter Workbench
+              </button>
+              <div className="home-proof">
+                <strong>4 connected signals</strong>
+                <span>Jira, Email, Google Meet, Calendar</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="home-console" aria-label="Workflow preview">
+            <div className="home-console-head">
+              <span>Live analyst queue</span>
+              <strong>Today</strong>
+            </div>
+            <div className="home-signal-row">
+              {["jira", "email", "meet", "calendar"].map((platform) => (
+                <span key={platform} className={`home-signal ${platform}`}>
+                  <PlatformLogo platform={platform} />
+                </span>
+              ))}
+            </div>
+            <div className="home-ticket-preview">
+              <span>Jira - KAN-1</span>
+              <strong>Allow donors to filter aid requests by city and urgency</strong>
+              <p>AI found missing clarification before impact analysis starts.</p>
+            </div>
+            <div className="home-flow-preview">
+              <span>Intake</span>
+              <span>Clarify</span>
+              <span>Impact</span>
+              <span>Testing</span>
+              <span>Handoff</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="home-capability-row">
+          <div>
+            <strong>Unified Inbox</strong>
+            <span>External platform requests become mapped analyst work items.</span>
+          </div>
+          <div>
+            <strong>AI Skill Pipeline</strong>
+            <span>Requirement, impact, test scope, and report steps stay coordinated.</span>
+          </div>
+          <div>
+            <strong>Review Gates</strong>
+            <span>Human confirmation stays visible before handoff actions.</span>
+          </div>
+        </div>
+      </section>
+    </main>
   );
 }
 
@@ -318,7 +740,333 @@ function LegacyWorkbench() {
   );
 }
 
-function TopBar({ status }) {
+function ArchitectureDiagramScreen({ onBack }) {
+  const [svg, setSvg] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      setError("");
+      try {
+        const response = await api("/api/workspace/current/diagram");
+        const { svg: rendered } = await mermaid.render("architecture-diagram", response.mermaid);
+        if (!cancelled) setSvg(rendered);
+      } catch (err) {
+        if (!cancelled) setError(err.message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <main className="diagram-screen">
+      <div className="diagram-toolbar">
+        <div>
+          <h2>Architecture Diagram</h2>
+          <p className="muted-note">Packages and call direction from the codebase-memory graph — a fast way to get oriented in a newly connected project.</p>
+        </div>
+        <button className="btn ghost compact" type="button" onClick={onBack}>
+          Back to workbench
+        </button>
+      </div>
+      {loading && <p className="muted-note">Generating diagram…</p>}
+      {error && <ErrorBox message={error} />}
+      {!loading && !error && svg && <div className="diagram-canvas" dangerouslySetInnerHTML={{ __html: svg }} />}
+    </main>
+  );
+}
+
+function ProjectOverviewScreen({ workspace, onWorkspaceUpdated, onBack, onSwitchProject }) {
+  const [activeMap, setActiveMap] = useState("sequence");
+  const [svg, setSvg] = useState("");
+  const [sequenceSvg, setSequenceSvg] = useState("");
+  const [endpoints, setEndpoints] = useState([]);
+  const [selectedEndpointId, setSelectedEndpointId] = useState("");
+  const [sequenceEngine, setSequenceEngine] = useState("scanner");
+  const [loading, setLoading] = useState(true);
+  const [sequenceLoading, setSequenceLoading] = useState(false);
+  const [reindexing, setReindexing] = useState(false);
+  const [graphifyIndexing, setGraphifyIndexing] = useState(false);
+  const [error, setError] = useState("");
+  const [sequenceError, setSequenceError] = useState("");
+  const [projectNotice, setProjectNotice] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      setError("");
+      try {
+        const response = await api("/api/workspace/current/diagram");
+        const { svg: rendered } = await mermaid.render("project-overview-diagram", response.mermaid);
+        if (!cancelled) setSvg(rendered);
+      } catch (err) {
+        if (!cancelled) setError(err.message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [workspace?.id, workspace?.index_status]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadEndpoints() {
+      try {
+        const items = await api("/api/workspace/current/endpoints");
+        if (cancelled) return;
+        setEndpoints(items);
+        setSelectedEndpointId((prev) => prev || items[0]?.id || "");
+      } catch {
+        if (!cancelled) setEndpoints([]);
+      }
+    }
+    loadEndpoints();
+    return () => {
+      cancelled = true;
+    };
+  }, [workspace?.id]);
+
+  useEffect(() => {
+    if (!selectedEndpointId) {
+      setSequenceSvg("");
+      return;
+    }
+    const endpoint = endpoints.find((item) => item.id === selectedEndpointId);
+    const requiresGraphify = sequenceEngine === "graphify" && endpoint?.framework !== "frontend";
+    if (requiresGraphify && workspace?.graphify_index_status !== "ready") {
+      setSequenceSvg("");
+      setSequenceError("");
+      setSequenceLoading(false);
+      return;
+    }
+    let cancelled = false;
+    async function loadSequence() {
+      setSequenceLoading(true);
+      setSequenceError("");
+      try {
+        const response = await api(
+          `/api/workspace/current/endpoints/sequence?endpointId=${encodeURIComponent(selectedEndpointId)}&engine=${sequenceEngine}`
+        );
+        const { svg: rendered } = await mermaid.render(`endpoint-sequence-${Date.now()}`, response.mermaid);
+        if (!cancelled) setSequenceSvg(rendered);
+      } catch (err) {
+        if (!cancelled) setSequenceError(err.message);
+      } finally {
+        if (!cancelled) setSequenceLoading(false);
+      }
+    }
+    loadSequence();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedEndpointId, sequenceEngine, workspace?.graphify_index_status, endpoints]);
+
+  async function reindexProject() {
+    setReindexing(true);
+    setError("");
+    setProjectNotice("");
+    try {
+      const next = await api("/api/workspace/current/reindex", { method: "POST" });
+      onWorkspaceUpdated?.(next);
+      setProjectNotice("Indexing started. The project status will refresh automatically.");
+    } catch (err) {
+      setProjectNotice(err.message);
+    } finally {
+      setReindexing(false);
+    }
+  }
+
+  async function graphifyIndexProject() {
+    if (workspace?.graphify_index_status === "ready") {
+      setProjectNotice("Graphify index already exists. Deep Flow can use the cached graph without re-indexing.");
+      return;
+    }
+    setGraphifyIndexing(true);
+    setSequenceError("");
+    setProjectNotice("");
+    try {
+      const next = await api("/api/workspace/current/graphify-index", { method: "POST" });
+      onWorkspaceUpdated?.(next);
+      setProjectNotice("Graphify indexing started. When it is ready, use Graphify Deep Flow for endpoint diagrams.");
+    } catch (err) {
+      setProjectNotice(err.message);
+    } finally {
+      setGraphifyIndexing(false);
+    }
+  }
+
+  const selectedEndpoint = endpoints.find((item) => item.id === selectedEndpointId);
+
+  return (
+    <main className="diagram-screen project-overview-screen">
+      <div className="diagram-toolbar project-overview-toolbar">
+        <div>
+          <div className="eyebrow">Project onboarding</div>
+          <h2>Project Overview</h2>
+          <p className="muted-note">
+            Start here when an analyst joins a project. The system map is generated from the connected repo so the
+            analyst can understand major modules before reviewing tickets.
+          </p>
+        </div>
+        <div className="diagram-toolbar-actions">
+          <button className="btn ghost compact" type="button" onClick={onSwitchProject}>
+            Switch project
+          </button>
+          <button className="btn primary compact" type="button" onClick={onBack}>
+            Start workbench
+          </button>
+        </div>
+      </div>
+      <section className="project-overview-header-card">
+        <div className="project-overview-summary">
+          <span className="source-pill">Connected project</span>
+          <div>
+            <h3>{workspace?.name || "No project connected"}</h3>
+            <p>
+              {workspace?.local_path ||
+                "Connect a local repo first so impact analysis and onboarding diagrams use real codebase evidence."}
+            </p>
+          </div>
+        </div>
+        <div className="project-overview-status-row">
+          <span className={`index-status-tag ${workspace?.index_status || "not_indexed"}`}>
+            {indexStatusLabel(workspace?.index_status, workspace?.index_error)}
+          </span>
+          <span className={`index-status-tag ${workspace?.graphify_index_status || "not_indexed"}`}>
+            Graphify: {indexStatusLabel(workspace?.graphify_index_status, workspace?.graphify_index_error)}
+          </span>
+        </div>
+        <div className="project-overview-help">
+          <strong>New analyst can use this page to:</strong>
+          <span>Understand modules, affected areas, and endpoint flow before reviewing tickets.</span>
+        </div>
+        <div className="project-overview-header-actions">
+          <button className="btn ghost compact" type="button" disabled={reindexing} onClick={reindexProject}>
+            {reindexing ? "Indexing..." : "Re-index project"}
+          </button>
+          <button
+            className="btn ghost compact"
+            type="button"
+            disabled={graphifyIndexing || workspace?.graphify_index_status === "indexing" || workspace?.graphify_index_status === "ready"}
+            onClick={graphifyIndexProject}
+          >
+            {workspace?.graphify_index_status === "ready"
+              ? "Graphify ready"
+              : graphifyIndexing || workspace?.graphify_index_status === "indexing"
+                ? "Running Graphify..."
+                : "Run Graphify index"}
+          </button>
+        </div>
+      </section>
+      {projectNotice && <div className="project-overview-notice info-box">{projectNotice}</div>}
+      <section className="project-overview-grid">
+        <section className="project-map-panel">
+          <div className="project-map-head">
+            <div>
+              <span className="source-pill">{activeMap === "sequence" ? "Endpoint flow" : "System map"}</span>
+              <h3>{activeMap === "sequence" ? "Endpoint sequence diagram" : "Architecture diagram"}</h3>
+            </div>
+            <span className="muted-note">
+              {activeMap === "sequence"
+                ? selectedEndpoint?.framework === "frontend"
+                  ? "Generated from frontend api() calls and mapped backend API URLs"
+                  : sequenceEngine === "graphify"
+                  ? "Generated from Laravel routes plus Graphify extracted graph"
+                  : "Generated from Laravel/Spring routes, controllers, and frontend API calls"
+                : "Generated by codebase-memory MCP"}
+            </span>
+          </div>
+          <div className="diagram-mode-tabs">
+            <button className={activeMap === "sequence" ? "active" : ""} type="button" onClick={() => setActiveMap("sequence")}>
+              Endpoint Sequence
+            </button>
+            {/* <button className={activeMap === "architecture" ? "active" : ""} type="button" onClick={() => setActiveMap("architecture")}>
+              Architecture Map
+            </button> */}
+          </div>
+          {activeMap === "sequence" && (
+            <>
+              <div className="diagram-engine-tabs">
+                <button
+                  className={sequenceEngine === "scanner" ? "active" : ""}
+                  type="button"
+                  onClick={() => setSequenceEngine("scanner")}
+                >
+                  Basic Scanner
+                </button>
+                <button
+                  className={sequenceEngine === "graphify" ? "active" : ""}
+                  type="button"
+                  onClick={() => setSequenceEngine("graphify")}
+                >
+                  Graphify Deep Flow
+                </button>
+              </div>
+              <div className="endpoint-picker">
+                <label className="field-label" htmlFor="endpoint-select">
+                  Select endpoint
+                </label>
+                <select
+                  id="endpoint-select"
+                  value={selectedEndpointId}
+                  onChange={(event) => setSelectedEndpointId(event.target.value)}
+                >
+                  {endpoints.map((endpoint) => (
+                    <option key={endpoint.id} value={endpoint.id}>
+                      [{endpoint.framework}] {endpoint.method} {endpoint.path} - {endpoint.controller}@{endpoint.action}
+                    </option>
+                  ))}
+                </select>
+                {selectedEndpoint && (
+                  <p className="muted-note">
+                    Source: <code>{selectedEndpoint.route_file}</code>
+                    {sequenceEngine === "graphify" &&
+                      selectedEndpoint.framework !== "frontend" &&
+                      " · Uses graphify-out/graph.json for controller dependencies"}
+                  </p>
+                )}
+              </div>
+              {sequenceEngine === "graphify" &&
+                selectedEndpoint?.framework !== "frontend" &&
+                workspace?.graphify_index_status !== "ready" && (
+                <div className="info-box">
+                  Run Graphify index first to generate evidence-based controller dependency flow.
+                </div>
+              )}
+              {endpoints.length === 0 && <ErrorBox message="No supported backend routes or frontend API calls found for this project." />}
+              {sequenceLoading && <p className="muted-note">Generating endpoint sequence...</p>}
+              {sequenceError && <ErrorBox message={sequenceError} />}
+              {!sequenceLoading && !sequenceError && sequenceSvg && (
+                <div className="diagram-canvas sequence-canvas" dangerouslySetInnerHTML={{ __html: sequenceSvg }} />
+              )}
+            </>
+          )}
+          {activeMap === "architecture" && (
+            <>
+              {loading && <p className="muted-note">Generating diagram...</p>}
+              {error && <ErrorBox message={error} />}
+              {!loading && !error && svg && <div className="diagram-canvas" dangerouslySetInnerHTML={{ __html: svg }} />}
+            </>
+          )}
+        </section>
+      </section>
+    </main>
+  );
+}
+
+function TopBar({ status, onHome, workspace, onSwitchProject, onViewDiagram }) {
   function quickAction(action) {
     window.dispatchEvent(new CustomEvent(QUICK_ACTION_EVENT, { detail: { action } }));
   }
@@ -332,8 +1080,29 @@ function TopBar({ status }) {
         <div className="brand-name">Analyst Workbench</div>
         <div className="brand-subtitle">Software Analyst workflow assistant</div>
       </div>
+      {onSwitchProject && (
+        <button
+          className={`active-project-pill ${workspace ? "" : "not-connected"}`}
+          type="button"
+          onClick={onSwitchProject}
+          title="Currently connected project — click to switch"
+        >
+          <span className="active-project-pill-icon" aria-hidden="true">
+            {workspace ? "\u{1F4C1}" : "⚠️"}
+          </span>
+          <span className="active-project-pill-text">
+            <span className="active-project-pill-label">{workspace ? workspace.name : "No project connected"}</span>
+            {workspace?.local_path && <span className="active-project-pill-path">{workspace.local_path}</span>}
+          </span>
+          {workspace?.index_status === "indexing" && <span className="index-status-note">indexing…</span>}
+          {workspace?.index_status === "failed" && <span className="index-status-note failed">index failed</span>}
+        </button>
+      )}
       <div className="topbar-spacer" />
       <nav className="topbar-actions" aria-label="Quick actions">
+        <button type="button" onClick={onHome}>
+          Home
+        </button>
         <button type="button" onClick={() => quickAction("inbox")}>
           Inbox
         </button>
@@ -346,6 +1115,11 @@ function TopBar({ status }) {
         <button type="button" onClick={() => quickAction("connect-apps")}>
           Connect Apps
         </button>
+        {onViewDiagram && (
+          <button type="button" onClick={onViewDiagram}>
+            Project Overview
+          </button>
+        )}
       </nav>
       <span className={`connection ${status}`}>
         <span />
@@ -403,14 +1177,15 @@ function WorkflowRail({ step }) {
  */
 const WORKFLOW_STEPS = [
   ["inbox", "Analyst Inbox"],
-  ["requirement", "Ticket Review"],
+  ["requirement", "Requirement Triage"],
   ["impact", "Impact Analysis"],
   ["test", "Test Scenarios"],
   ["report", "Handoff Summary"],
 ];
 
-function AnalystWorkflow() {
+function AnalystWorkflow({ workspace, onViewProjectOverview, onSwitchProject }) {
   const [phase, setPhase] = useState("inbox");
+  const [inboxView, setInboxView] = useState("chat");
   const [ticket, setTicket] = useState(EMPTY_TICKET);
   const [reqArtifact, setReqArtifact] = useState(null);
   const [impactArtifact, setImpactArtifact] = useState(null);
@@ -435,22 +1210,23 @@ function AnalystWorkflow() {
       const action = event.detail?.action;
       if (action === "inbox") {
         setPhase("inbox");
+        setInboxView("queue");
         return;
       }
       if (action === "import-jira") {
         setPhase("inbox");
+        setInboxView("jira");
         focusInboxTarget("jira-import-input");
         return;
       }
       if (action === "manual-intake") {
-        selectInboxTicket({ ...EMPTY_TICKET, receivedAt: "Manual draft" });
+        setPhase("inbox");
+        setInboxView("manual");
         return;
       }
       if (action === "connect-apps") {
         setPhase("inbox");
-        window.setTimeout(() => {
-          document.getElementById("platform-command-center")?.scrollIntoView({ behavior: "smooth", block: "start" });
-        }, 80);
+        setInboxView("apps");
       }
     }
 
@@ -471,6 +1247,7 @@ function AnalystWorkflow() {
 
   function reset() {
     setPhase("inbox");
+    setInboxView("chat");
     setTicket(EMPTY_TICKET);
     clearWorkflowArtifacts();
   }
@@ -588,6 +1365,13 @@ function AnalystWorkflow() {
         impactReviewed={Boolean(impactArtifact?.reviewed)}
         testCount={testArtifacts.length}
         onReset={reset}
+        inboxView={inboxView}
+        onInboxViewChange={setInboxView}
+        onGoInbox={() => setPhase("inbox")}
+        onManual={() => selectInboxTicket({ ...EMPTY_TICKET, receivedAt: "Manual draft" })}
+        workspace={workspace}
+        onViewProjectOverview={onViewProjectOverview}
+        onSwitchProject={onSwitchProject}
       />
       <main className="workspace">
         {phase === "inbox" && (
@@ -595,6 +1379,11 @@ function AnalystWorkflow() {
             items={ANALYST_INBOX_ITEMS}
             onSelect={selectInboxTicket}
             onManual={() => selectInboxTicket({ ...EMPTY_TICKET, receivedAt: "Manual draft" })}
+            activeView={inboxView}
+            onViewChange={setInboxView}
+            workspace={workspace}
+            onViewProjectOverview={onViewProjectOverview}
+            onSwitchProject={onSwitchProject}
           />
         )}
         {phase === "requirement" && (
@@ -651,7 +1440,21 @@ function AnalystWorkflow() {
   );
 }
 
-function AnalystWorkflowRail({ phase, reqStatus, selectedTicket, impactReviewed, testCount, onReset }) {
+function AnalystWorkflowRail({
+  phase,
+  reqStatus,
+  selectedTicket,
+  impactReviewed,
+  testCount,
+  onReset,
+  inboxView,
+  onInboxViewChange,
+  onGoInbox,
+  onManual,
+  workspace,
+  onViewProjectOverview,
+  onSwitchProject,
+}) {
   const order = WORKFLOW_STEPS.map(([id]) => id);
   const currentIndex = order.indexOf(phase);
   const subtitle = {
@@ -663,6 +1466,87 @@ function AnalystWorkflowRail({ phase, reqStatus, selectedTicket, impactReviewed,
   };
   return (
     <aside className="workflow-rail">
+      <div className="rail-section">
+        <div className="rail-label">Project</div>
+        <div className="rail-project-card">
+          <strong>{workspace?.name || "No project connected"}</strong>
+          {workspace?.local_path && <span className="rail-project-path">{workspace.local_path}</span>}
+          <span>{workspace?.index_status === "indexing" ? "Indexing project..." : workspace?.index_status === "ready" ? "Ready for analysis" : "Project setup"}</span>
+          <div className="rail-project-actions">
+            <button className="btn ghost compact" type="button" onClick={onViewProjectOverview}>
+              Project Overview
+            </button>
+            <button className="btn ghost compact" type="button" onClick={onSwitchProject}>
+              Switch
+            </button>
+          </div>
+        </div>
+      </div>
+      <div className="rail-section rail-workspace-nav-section">
+        <div className="rail-label">Workspace</div>
+        <div className="rail-nav">
+          <button
+            className={phase === "inbox" && inboxView === "chat" ? "active" : ""}
+            type="button"
+            onClick={() => {
+              onGoInbox();
+              onInboxViewChange("chat");
+            }}
+          >
+            <span>Repo AI Chat</span>
+            <small>Ask the current repo</small>
+          </button>
+          <button
+            className={phase === "inbox" && inboxView === "queue" ? "active" : ""}
+            type="button"
+            onClick={() => {
+              onGoInbox();
+              onInboxViewChange("queue");
+            }}
+          >
+            <span>Work Queue</span>
+            <small>Select ticket</small>
+          </button>
+          <button
+            className={phase === "inbox" && inboxView === "jira" ? "active" : ""}
+            type="button"
+            onClick={() => {
+              onGoInbox();
+              onInboxViewChange("jira");
+            }}
+          >
+            <span>Import Jira</span>
+            <small>Fetch ticket</small>
+          </button>
+          <button
+            className={phase === "inbox" && inboxView === "manual" ? "active" : ""}
+            type="button"
+            onClick={() => {
+              onGoInbox();
+              onInboxViewChange("manual");
+            }}
+          >
+            <span>Manual Intake</span>
+            <small>Draft request</small>
+          </button>
+          <button
+            className={phase === "inbox" && inboxView === "apps" ? "active" : ""}
+            type="button"
+            onClick={() => {
+              onGoInbox();
+              onInboxViewChange("apps");
+            }}
+          >
+            <span>Connect Apps</span>
+            <small>Jira, email, calendar</small>
+          </button>
+        </div>
+      </div>
+      <div className="rail-current-card">
+        <span>Current work</span>
+        <strong>{selectedTicket.ticketKey || selectedTicket.ticketTitle || (phase === "inbox" ? "Inbox" : "Analysis")}</strong>
+        <small>{reqStatus ? formatStatus(reqStatus) : impactReviewed ? "Impact reviewed" : testCount > 0 ? `${testCount} test set${testCount === 1 ? "" : "s"}` : "No ticket selected"}</small>
+      </div>
       <div className="rail-label">Analyst Workflow</div>
       {WORKFLOW_STEPS.map(([id, label], index) => {
         const state = index < currentIndex ? "complete" : index === currentIndex ? "active" : "";
@@ -703,6 +1587,8 @@ const CALENDAR_EVENTS = [
   { id: "cal-4", day: "Thu", time: "15:00", title: "QA handoff sync", withWho: "Tester", isNew: false },
 ];
 
+const CALENDAR_DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
 /** "2026-07-30" (all-day) or a full ISO datetime — Google Calendar sends either shape. */
 function formatEventDayTime(value) {
   if (!value) {
@@ -724,9 +1610,93 @@ function formatEventDayTime(value) {
   return { day, time };
 }
 
+function calendarDateFromEvent(event) {
+  const value = event.start_time || event.startTime || event.date || "";
+  const parsed = value ? new Date(value) : null;
+  if (parsed && !Number.isNaN(parsed.getTime())) return parsed;
+  if (event.day === "Today") return new Date();
+  if (event.day === "Tomorrow") {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow;
+  }
+  return null;
+}
+
+function calendarDateKey(date) {
+  if (!date) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function normalizeCalendarEvent(event) {
+  const date = calendarDateFromEvent(event);
+  const fromGoogle = formatEventDayTime(event.start_time || event.startTime || "");
+  return {
+    id: event.id,
+    title: event.title || "(no title)",
+    day: fromGoogle.day || event.day || "",
+    time: fromGoogle.time || event.time || "",
+    withWho: event.attendees || event.withWho || (event.meet_link || event.meetLink ? "Google Meet" : ""),
+    meetLink: event.meet_link || event.meetLink || "",
+    isNew: Boolean(event.recently_updated ?? event.isNew),
+    date,
+    dateKey: calendarDateKey(date),
+  };
+}
+
+function buildCalendarDays(events, mode) {
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  if (mode === "month") {
+    start.setDate(1);
+  } else {
+    start.setDate(start.getDate() - start.getDay());
+  }
+  const length = mode === "month" ? 35 : 7;
+  const normalized = events.map(normalizeCalendarEvent);
+  return Array.from({ length }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    const dateKey = calendarDateKey(date);
+    return {
+      date,
+      dateKey,
+      label: date.getDate(),
+      dayName: CALENDAR_DAY_NAMES[date.getDay()],
+      isToday: dateKey === calendarDateKey(today),
+      isCurrentMonth: date.getMonth() === today.getMonth(),
+      events: normalized.filter((event) => event.dateKey === dateKey),
+    };
+  });
+}
+
+function emailSenderName(from) {
+  if (!from) return "Unknown sender";
+  return from.replace(/<.*?>/g, "").trim() || from;
+}
+
+function emailSenderInitial(from) {
+  return emailSenderName(from).slice(0, 1).toUpperCase() || "E";
+}
+
+function emailCategory(message) {
+  const text = `${message.subject || ""} ${message.snippet || ""}`.toLowerCase();
+  if (/(requirement|request|change|ticket|issue|bug|clarify|approval|stakeholder)/.test(text)) return "Likely requirement";
+  if (/(meeting|schedule|agenda|sync|review)/.test(text)) return "Meeting follow-up";
+  return "Needs triage";
+}
+
+function formatEmailDate(value) {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
 function AnalystCalendar() {
   const [events, setEvents] = useState(CALENDAR_EVENTS);
   const [live, setLive] = useState(false);
+  const [mode, setMode] = useState("week");
 
   useEffect(() => {
     let cancelled = false;
@@ -737,19 +1707,7 @@ function AnalystCalendar() {
       })
       .then((items) => {
         if (cancelled || !items) return;
-        setEvents(
-          items.map((item) => {
-            const { day, time } = formatEventDayTime(item.start_time);
-            return {
-              id: item.id,
-              day,
-              time,
-              title: item.title,
-              withWho: item.attendees || (item.meet_link ? "Google Meet" : ""),
-              isNew: item.recently_updated,
-            };
-          })
-        );
+        setEvents(items.map(normalizeCalendarEvent));
         setLive(true);
       })
       .catch(() => {});
@@ -759,35 +1717,69 @@ function AnalystCalendar() {
   }, []);
 
   const newCount = events.filter((event) => event.isNew).length;
+  const days = buildCalendarDays(events, mode);
+  const todayKey = calendarDateKey(new Date());
+  const todayEvents = events.map(normalizeCalendarEvent).filter((event) => event.dateKey === todayKey);
   return (
     <div className="analyst-calendar">
       <div className="analyst-calendar-header">
         <span className="rail-label">Calendar</span>
         {newCount > 0 && <span className="calendar-badge">{newCount} new</span>}
       </div>
-      {events.length === 0 ? (
-        <p className="calendar-note">No upcoming events found.</p>
-      ) : (
-        <ul className="calendar-event-list">
-          {events.map((event) => (
-            <li key={event.id} className="calendar-event">
-              {event.isNew && <span className="calendar-dot" title="New since last check" />}
-              <div className="calendar-event-body">
-                <div className="calendar-event-time">
-                  {event.day} · {event.time}
-                </div>
-                <div className="calendar-event-title">{event.title}</div>
-                {event.withWho && <div className="calendar-event-with">{event.withWho}</div>}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+      <div className="calendar-toggle" aria-label="Calendar view">
+        <button className={mode === "week" ? "active" : ""} type="button" onClick={() => setMode("week")}>
+          Week
+        </button>
+        <button className={mode === "month" ? "active" : ""} type="button" onClick={() => setMode("month")}>
+          Month
+        </button>
+      </div>
+      <CalendarGrid days={days} compact={mode === "month"} />
+      <div className="calendar-notification-panel">
+        <strong>Today notifications</strong>
+        {todayEvents.length === 0 ? (
+          <span>No meetings today.</span>
+        ) : (
+          todayEvents.slice(0, 3).map((event) => (
+            <div key={event.id} className="calendar-notification">
+              <span>{event.time || "All day"}</span>
+              <p>{event.title}</p>
+            </div>
+          ))
+        )}
+      </div>
       <p className="calendar-note">
         {live
           ? "Live from your connected Google Calendar."
           : "Sample schedule. Connect Google Calendar to sync real invites and get live notifications here."}
       </p>
+    </div>
+  );
+}
+
+function CalendarGrid({ days, compact = false }) {
+  return (
+    <div className={`calendar-grid ${compact ? "month" : "week"}`}>
+      {days.map((day) => (
+        <div
+          key={day.dateKey}
+          className={`calendar-day ${day.isToday ? "today" : ""} ${day.isCurrentMonth ? "" : "muted"}`}
+        >
+          <div className="calendar-day-head">
+            <span>{day.dayName}</span>
+            <strong>{day.label}</strong>
+          </div>
+          <div className="calendar-day-events">
+            {day.events.slice(0, compact ? 2 : 3).map((event) => (
+              <span key={event.id} title={event.title}>
+                {event.time && !compact ? `${event.time} ` : ""}
+                {event.title}
+              </span>
+            ))}
+            {day.events.length > (compact ? 2 : 3) && <em>+{day.events.length - (compact ? 2 : 3)}</em>}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -993,7 +1985,7 @@ function PlatformLogo({ platform, className = "" }) {
   );
 }
 
-function AnalystInboxPhase({ items, onSelect, onManual }) {
+function AnalystInboxPhase({ items, onSelect, onManual, activeView, onViewChange, workspace, onViewProjectOverview, onSwitchProject }) {
   const [importKey, setImportKey] = useState("MBC-204");
   const [importedItems, setImportedItems] = useState([]);
   const [importLoading, setImportLoading] = useState(false);
@@ -1003,7 +1995,47 @@ function AnalystInboxPhase({ items, onSelect, onManual }) {
   const [csvLoading, setCsvLoading] = useState(false);
   const [csvMessage, setCsvMessage] = useState("");
   const [csvError, setCsvError] = useState("");
+  const [googleConnected, setGoogleConnected] = useState(false);
+  const [gmailMessages, setGmailMessages] = useState([]);
+  const [gmailUnreadCount, setGmailUnreadCount] = useState(null);
+  const [gmailLoading, setGmailLoading] = useState(false);
+  const [gmailMessage, setGmailMessage] = useState("");
+  const [gmailError, setGmailError] = useState("");
+  const [calendarEvents, setCalendarEvents] = useState([]);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+  const [calendarMessage, setCalendarMessage] = useState("");
+  const [calendarError, setCalendarError] = useState("");
+  const [repoQuestion, setRepoQuestion] = useState("Which controllers handle artifact history?");
+  const [repoChatMessages, setRepoChatMessages] = useState([]);
+  const [repoChatLoading, setRepoChatLoading] = useState(false);
+  const [repoChatError, setRepoChatError] = useState("");
   const allItems = [...importedItems, ...items];
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadGoogleSources() {
+      try {
+        const status = await api("/api/integrations/google/status");
+        if (cancelled || !status.connected) return;
+        setGoogleConnected(true);
+        const [summary, messages, events] = await Promise.all([
+          api("/api/integrations/google/gmail/summary"),
+          api("/api/integrations/google/gmail/messages"),
+          api("/api/integrations/google/calendar/events"),
+        ]);
+        if (cancelled) return;
+        setGmailUnreadCount(summary.unread_count ?? summary.unreadCount ?? null);
+        setGmailMessages(messages);
+        setCalendarEvents(events);
+      } catch {
+        // Google not connected or unreachable; email/calendar import panels stay hidden.
+      }
+    }
+    loadGoogleSources();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function recordImportedItem(ticket, source, status) {
     const importedItem = {
@@ -1065,32 +2097,262 @@ function AnalystInboxPhase({ items, onSelect, onManual }) {
     }
   }
 
+  async function importEmail(messageId) {
+    setGmailError("");
+    setGmailMessage("");
+    setGmailLoading(true);
+    try {
+      const response = await api("/api/integrations/google/gmail/import", {
+        method: "POST",
+        body: { message_id: messageId },
+      });
+      const ticket = ticketFromImportResponse(response);
+      recordImportedItem(ticket, "Email", "Gmail import");
+      setGmailMessage(response.message || "Email imported into Analyst Inbox.");
+    } catch (err) {
+      setGmailError(err.message);
+    } finally {
+      setGmailLoading(false);
+    }
+  }
+
+  async function importCalendarEventItem(eventId) {
+    setCalendarError("");
+    setCalendarMessage("");
+    setCalendarLoading(true);
+    try {
+      const response = await api("/api/integrations/google/calendar/import", {
+        method: "POST",
+        body: { event_id: eventId },
+      });
+      const ticket = ticketFromImportResponse(response);
+      recordImportedItem(ticket, "Calendar", "Calendar import");
+      setCalendarMessage(response.message || "Meeting imported into Analyst Inbox.");
+    } catch (err) {
+      setCalendarError(err.message);
+    } finally {
+      setCalendarLoading(false);
+    }
+  }
+
+  async function askRepoQuestion(question = repoQuestion) {
+    const normalized = question.trim();
+    if (!normalized) {
+      setRepoChatError("Ask a repo question first.");
+      return;
+    }
+    setRepoChatError("");
+    setRepoChatLoading(true);
+    const userMessage = { id: `user-${Date.now()}`, role: "user", question: normalized };
+    setRepoChatMessages((prev) => [...prev, userMessage]);
+    try {
+      const artifact = await api("/api/skills/code-qa", {
+        method: "POST",
+        body: { profile: ANALYST_PROFILE, question: normalized },
+      });
+      setRepoChatMessages((prev) => [
+        ...prev,
+        {
+          id: artifact.task_id || `ai-${Date.now()}`,
+          role: "assistant",
+          question: normalized,
+          artifact,
+          result: artifact.result || {},
+        },
+      ]);
+      setRepoQuestion("");
+    } catch (err) {
+      setRepoChatError(err.message);
+    } finally {
+      setRepoChatLoading(false);
+    }
+  }
+
   return (
     <section className="screen">
-      <PlatformStatusStrip />
       <HeaderBlock
-        eyebrow="Step 1 - Analyst Inbox"
-        title="Select an incoming work item"
-        subtitle="Review requests from Jira, email, meeting notes, or manual entry before the AI analysis workflow starts."
+        eyebrow={inboxPageMeta(activeView).eyebrow}
+        title={inboxPageMeta(activeView).title}
+        subtitle={inboxPageMeta(activeView).subtitle}
       />
-      <div className="inbox-command-bar">
-        <div className="inbox-command-copy">
-          <strong>Live work queue</strong>
-          <span>{allItems.length} mapped items from connected and sample sources</span>
+      {activeView === "chat" && (
+        <section className="start-here-panel compact-start-panel">
+        <div>
+          <span className="source-pill">Start here</span>
+          <h2>Understand the project first, then analyse the ticket.</h2>
+          <p>
+            {workspace
+              ? `${workspace.name} is connected. Open the Project Overview to see the system map, then choose a work item from the queue.`
+              : "Connect a project so impact analysis, project overview, and handoff evidence are grounded in real code."}
+          </p>
         </div>
-        <div className="inbox-command-tools">
-          <span>Ready for triage</span>
-          <span>Clarification needed</span>
-          <span>Meeting notes</span>
+        <div className="start-here-actions">
+          <button className="btn primary compact" type="button" onClick={workspace ? onViewProjectOverview : onSwitchProject}>
+            {workspace ? "View Project Overview" : "Connect Project"}
+          </button>
+          <button className="btn ghost compact" type="button" onClick={onManual}>
+            Start Manual Intake
+          </button>
         </div>
-      </div>
-      <div className="inbox-layout">
-        <section className="inbox-list">
-          {allItems.map((item) => (
-            <button key={item.id} className="inbox-item" type="button" onClick={() => onSelect(item.ticket)}>
-              <div className="inbox-item-top">
+      </section>
+      )}
+      <RepoAssistantWorkspace
+        activeView={activeView}
+        onViewChange={onViewChange}
+        workspace={workspace}
+        question={repoQuestion}
+        messages={repoChatMessages}
+        loading={repoChatLoading}
+        error={repoChatError}
+        onQuestionChange={setRepoQuestion}
+        onAsk={askRepoQuestion}
+        items={allItems}
+        onSelect={onSelect}
+        onManual={onManual}
+        importKey={importKey}
+        onImportKeyChange={setImportKey}
+        importLoading={importLoading}
+        importMessage={importMessage}
+        importError={error}
+        onImportJira={importJiraTicket}
+        csvText={csvText}
+        onCsvTextChange={setCsvText}
+        csvLoading={csvLoading}
+        csvMessage={csvMessage}
+        csvError={csvError}
+        onLoadSampleCsv={() => setCsvText(SAMPLE_CSV_ROW)}
+        onImportCsv={importCsvTicket}
+        googleConnected={googleConnected}
+        gmailMessages={gmailMessages}
+        gmailLoading={gmailLoading}
+        gmailMessage={gmailMessage}
+        gmailError={gmailError}
+        gmailUnreadCount={gmailUnreadCount}
+        onImportEmail={importEmail}
+        calendarEvents={calendarEvents}
+        calendarLoading={calendarLoading}
+        calendarMessage={calendarMessage}
+        calendarError={calendarError}
+        onImportCalendar={importCalendarEventItem}
+      />
+    </section>
+  );
+}
+
+function repoChatPrompts(workspace) {
+  const name = (workspace?.name || "").toLowerCase();
+  if (name.includes("banjir")) {
+    return [
+      "Which files are related to aid request filtering?",
+      "What should I check before changing donation status?",
+      "Where is flood report approval handled?",
+      "What modules may be affected by notification changes?",
+    ];
+  }
+  return [
+    "Which controllers handle artifact history?",
+    "Where is requirement analysis implemented?",
+    "What handles Jira external handoff?",
+    "Which files are related to project workspace indexing?",
+  ];
+}
+
+function inboxPageMeta(view) {
+  if (view === "queue") {
+    return {
+      eyebrow: "Analyst Inbox",
+      title: "Choose a work item",
+      subtitle: "Select one request from Jira, email, meeting notes, or sample data to start the analysis workflow.",
+    };
+  }
+  if (view === "jira") {
+    return {
+      eyebrow: "Ticket intake",
+      title: "Import a Jira ticket",
+      subtitle: "Fetch a Jira ticket into the platform so the analyst does not need to copy ticket details manually.",
+    };
+  }
+  if (view === "manual") {
+    return {
+      eyebrow: "Manual intake",
+      title: "Start a manual change request",
+      subtitle: "Use this when the requirement came from a call, email, document, or stakeholder conversation.",
+    };
+  }
+  if (view === "apps") {
+    return {
+      eyebrow: "Connected sources",
+      title: "Monitor connected platforms",
+      subtitle: "Check Jira, email, meetings, and calendar signals from one place.",
+    };
+  }
+  return {
+    eyebrow: "Repo AI Chat",
+    title: "Ask about the current project",
+    subtitle: "Use AI to understand the connected repo before analysing a ticket or change request.",
+  };
+}
+
+function RepoAssistantWorkspace({
+  activeView,
+  onViewChange,
+  workspace,
+  question,
+  messages,
+  loading,
+  error,
+  onQuestionChange,
+  onAsk,
+  items,
+  onSelect,
+  onManual,
+  importKey,
+  onImportKeyChange,
+  importLoading,
+  importMessage,
+  importError,
+  onImportJira,
+  csvText,
+  onCsvTextChange,
+  csvLoading,
+  csvMessage,
+  csvError,
+  onLoadSampleCsv,
+  onImportCsv,
+  googleConnected,
+  gmailMessages,
+  gmailLoading,
+  gmailMessage,
+  gmailError,
+  gmailUnreadCount,
+  onImportEmail,
+  calendarEvents,
+  calendarLoading,
+  calendarMessage,
+  calendarError,
+  onImportCalendar,
+}) {
+  const latestAssistant = [...messages].reverse().find((message) => message.role === "assistant");
+
+  if (activeView === "queue") {
+    return (
+      <section className="focused-page-card">
+        <div className="focused-page-head">
+          <div>
+            <span className="source-pill">Work Queue</span>
+            <h2>Incoming work items</h2>
+            <p>Pick a ticket when you are ready to start requirement analysis.</p>
+          </div>
+          <button className="btn ghost compact" type="button" onClick={() => onViewChange("chat")}>
+            Ask repo first
+          </button>
+        </div>
+        <div className="queue-card-grid">
+          {items.map((item) => (
+            <button key={item.id} type="button" className="queue-card" onClick={() => onSelect(item.ticket)}>
+              <div>
                 <span className="source-pill">{item.source}</span>
-                <span>{item.age}</span>
+                <em>{item.age}</em>
               </div>
               <strong>{item.ticket.ticketTitle}</strong>
               <p>{item.ticket.description}</p>
@@ -1101,66 +2363,295 @@ function AnalystInboxPhase({ items, onSelect, onManual }) {
               </div>
             </button>
           ))}
-        </section>
-        <section className="inbox-side-panel">
-          <label className="field-label">Connector concept</label>
-          <h2>Hermes-style intake</h2>
-          <p>
-            External sources become one analyst inbox. The analyst selects a work item, reviews the mapped ticket fields,
-            then runs requirement analysis, clarification, impact analysis, testing scope, and handoff.
-          </p>
-          <div className="connector-stack">
-            <span>Jira</span>
-            <span>Email</span>
-            <span>Meeting Notes</span>
-            <span>CSV / Excel</span>
-            <span>Manual</span>
+        </div>
+      </section>
+    );
+  }
+
+  if (activeView === "jira") {
+    return (
+      <section className="focused-page-card intake-focus-card">
+        <div className="focused-page-head">
+          <div>
+            <span className="source-pill">Jira</span>
+            <h2>Import ticket details</h2>
+            <p>Paste a ticket key or Jira URL. The platform maps the ticket into the analyst workflow.</p>
           </div>
-          <div className="inbox-import-box">
-            <label className="field-label">Import Jira ticket</label>
-            <div className="jira-import-controls">
-              <input
-                id="jira-import-input"
-                type="text"
-                value={importKey}
-                onChange={(event) => setImportKey(event.target.value)}
-                placeholder="MBC-204 or Jira ticket URL"
-              />
-              <button className="btn primary compact" type="button" disabled={importLoading} onClick={importJiraTicket}>
-                {importLoading ? "Importing..." : "Import"}
-              </button>
-            </div>
-            {importMessage && <div className="info-box">{importMessage}</div>}
-            {error && <ErrorBox message={error} />}
-          </div>
-          <div className="inbox-import-box">
-            <div className="ticket-form-actions">
-              <label className="field-label">Import from CSV / Excel</label>
-              <button className="btn ghost compact" type="button" onClick={() => setCsvText(SAMPLE_CSV_ROW)}>
-                Load sample row
-              </button>
-            </div>
-            <p>Paste a header row plus one data row, exported from Excel or Google Sheets.</p>
-            <textarea
-              className="compact-textarea"
-              value={csvText}
-              onChange={(event) => setCsvText(event.target.value)}
-              placeholder={"key,title,priority,reporter,description,acceptance criteria,comments\nMBC-231,..."}
+        </div>
+        <div className="large-import-panel">
+          <label className="field-label" htmlFor="jira-import-input">Jira ticket key or URL</label>
+          <div className="jira-import-controls">
+            <input
+              id="jira-import-input"
+              type="text"
+              value={importKey}
+              onChange={(event) => onImportKeyChange(event.target.value)}
+              placeholder="MBC-204 or Jira ticket URL"
             />
-            <div className="action-row">
-              <button className="btn primary compact" type="button" disabled={csvLoading} onClick={importCsvTicket}>
-                {csvLoading ? "Importing..." : "Import row"}
-              </button>
-            </div>
-            {csvMessage && <div className="info-box">{csvMessage}</div>}
-            {csvError && <ErrorBox message={csvError} />}
+            <button className="btn primary" type="button" disabled={importLoading} onClick={onImportJira}>
+              {importLoading ? "Importing..." : "Import ticket"}
+            </button>
           </div>
-          <button className="btn ghost" type="button" onClick={onManual}>
+          {importMessage && <div className="info-box">{importMessage}</div>}
+          {importError && <ErrorBox message={importError} />}
+        </div>
+      </section>
+    );
+  }
+
+  if (activeView === "manual") {
+    return (
+      <section className="focused-page-card manual-focus-card">
+        <div className="focused-page-head">
+          <div>
+            <span className="source-pill">Manual</span>
+            <h2>Create a manual analysis draft</h2>
+            <p>Use this when the change request came from a meeting, email, or stakeholder discussion.</p>
+          </div>
+          <button className="btn primary" type="button" onClick={onManual}>
             Start manual intake
           </button>
-        </section>
+        </div>
+        <div className="manual-intake-preview">
+          <span>Next step</span>
+          <strong>Requirement Triage</strong>
+          <p>The platform will open the AI readiness check before impact analysis starts.</p>
+        </div>
+      </section>
+    );
+  }
+
+  if (activeView === "apps") {
+    return (
+      <section className="focused-page-card">
+        <PlatformStatusStrip />
+        <div className="connector-source-grid">
+          {googleConnected && (
+            <EmailTriagePanel
+              messages={gmailMessages}
+              loading={gmailLoading}
+              message={gmailMessage}
+              error={gmailError}
+              unreadCount={gmailUnreadCount}
+              onImport={onImportEmail}
+            />
+          )}
+          {googleConnected && (
+            <CalendarImportPanel
+              events={calendarEvents}
+              loading={calendarLoading}
+              message={calendarMessage}
+              error={calendarError}
+              onImport={onImportCalendar}
+            />
+          )}
+          {!googleConnected && (
+            <div className="empty-monitor-state">
+              Connect Google to show Gmail and Calendar import panels here.
+            </div>
+          )}
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <div className="repo-assistant-workspace chat-only">
+      <section className="repo-chat-panel">
+        <div className="repo-chat-head">
+          <div>
+            <span className="source-pill">Repo AI</span>
+            <h2>Ask about the current project</h2>
+            <p>
+              Ask before opening a ticket. Answers are grounded through the existing Code Q&A skill and project graph
+              for {workspace?.name || "the connected repo"}.
+            </p>
+          </div>
+          <div className="repo-chat-status">
+            <span>{workspace?.name || "No project"}</span>
+            <strong>{workspace?.index_status === "ready" ? "Graph ready" : "Graph may need indexing"}</strong>
+          </div>
+        </div>
+
+        <div className="repo-chat-prompts">
+          {repoChatPrompts(workspace).map((prompt) => (
+            <button key={prompt} type="button" onClick={() => onAsk(prompt)} disabled={loading}>
+              {prompt}
+            </button>
+          ))}
+        </div>
+
+        <div className="repo-chat-thread">
+          {messages.length === 0 ? (
+            <div className="repo-chat-empty">
+              <strong>Start by asking where a feature lives, what depends on it, or what risk to check.</strong>
+              <span>Example: "{repoChatPrompts(workspace)[0]}"</span>
+            </div>
+          ) : (
+            messages.map((message) =>
+              message.role === "user" ? (
+                <div key={message.id} className="repo-chat-message user">
+                  {message.question}
+                </div>
+              ) : (
+                <div key={message.id} className="repo-chat-message assistant">
+                  <strong>AI answer</strong>
+                  <p>{message.result.answer || "(no answer)"}</p>
+                  {(message.result.evidence || []).length > 0 && (
+                    <div className="repo-chat-evidence">
+                      {(message.result.evidence || []).slice(0, 4).map((item, index) => (
+                        <span key={`${message.id}-evidence-${index}`}>
+                          {item.source || item.claim || "Evidence"}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {(message.result.ungrounded || []).length > 0 && (
+                    <div className="repo-chat-warning">Some claims were not grounded in the project graph.</div>
+                  )}
+                </div>
+              )
+            )
+          )}
+          {loading && <div className="repo-chat-message assistant loading">Checking the project graph...</div>}
+        </div>
+
+        <div className="repo-chat-input">
+          <textarea
+            value={question}
+            onChange={(event) => onQuestionChange(event.target.value)}
+            placeholder="Ask about controllers, models, dependencies, known issues, or impact areas in this repo."
+          />
+          <button className="btn primary" type="button" disabled={loading} onClick={() => onAsk()}>
+            {loading ? "Asking..." : "Ask Repo AI"}
+          </button>
+        </div>
+        {error && <ErrorBox message={error} />}
+        {latestAssistant?.artifact?.task_id && (
+          <p className="muted-note">
+            Last answer saved as artifact <code>{latestAssistant.artifact.task_id}</code>.
+          </p>
+        )}
+      </section>
+
+    </div>
+  );
+}
+
+function EmailTriagePanel({ messages, loading, message, error, unreadCount, onImport }) {
+  const displayCount = unreadCount ?? messages.length;
+  return (
+    <div className="inbox-import-box email-triage-panel">
+      <div className="panel-section-head">
+        <div>
+          <label className="field-label">Gmail requirement radar</label>
+          <p>Unread threads that may need analyst triage.</p>
+        </div>
+        <span>{displayCount} unread</span>
       </div>
-    </section>
+      {messages.length === 0 ? (
+        <div className="empty-monitor-state">
+          {displayCount > 0
+            ? "Gmail has unread mail, but no previewable requirement thread was returned for quick import."
+            : "No unread requirement emails found."}
+        </div>
+      ) : (
+        <div className="email-triage-list">
+          {messages.map((msg) => (
+            <article key={msg.id} className="email-triage-card">
+              <div className="email-avatar">{emailSenderInitial(msg.from)}</div>
+              <div className="email-triage-body">
+                <div className="email-triage-top">
+                  <strong>{msg.subject}</strong>
+                  <span>{formatEmailDate(msg.date)}</span>
+                </div>
+                <div className="email-sender">{emailSenderName(msg.from)}</div>
+                {msg.snippet && <p>{msg.snippet}</p>}
+                <div className="email-triage-actions">
+                  <span>{emailCategory(msg)}</span>
+                  <button className="btn ghost compact" type="button" disabled={loading} onClick={() => onImport(msg.id)}>
+                    Import
+                  </button>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+      {message && <div className="info-box">{message}</div>}
+      {error && <ErrorBox message={error} />}
+    </div>
+  );
+}
+
+function CalendarImportPanel({ events, loading, message, error, onImport }) {
+  const [mode, setMode] = useState("week");
+  const normalizedEvents = events.map(normalizeCalendarEvent);
+  const days = buildCalendarDays(normalizedEvents, mode);
+  const todayKey = calendarDateKey(new Date());
+  const todayEvents = normalizedEvents.filter((event) => event.dateKey === todayKey);
+  const upcoming = normalizedEvents.slice(0, 4);
+
+  return (
+    <div className="inbox-import-box calendar-workspace-panel">
+      <div className="panel-section-head">
+        <div>
+          <label className="field-label">Google Calendar monitor</label>
+          <p>Requirement meetings and today notifications.</p>
+        </div>
+        <div className="calendar-toggle">
+          <button className={mode === "week" ? "active" : ""} type="button" onClick={() => setMode("week")}>
+            Week
+          </button>
+          <button className={mode === "month" ? "active" : ""} type="button" onClick={() => setMode("month")}>
+            Month
+          </button>
+        </div>
+      </div>
+      <CalendarGrid days={days} compact={mode === "month"} />
+      <div className="today-monitor-card">
+        <strong>Today notifications</strong>
+        {todayEvents.length === 0 ? (
+          <span>No meetings scheduled today.</span>
+        ) : (
+          todayEvents.map((event) => (
+            <button
+              key={event.id}
+              className="calendar-import-row"
+              type="button"
+              disabled={loading}
+              onClick={() => onImport(event.id)}
+            >
+              <span>{event.time || "All day"}</span>
+              <strong>{event.title}</strong>
+            </button>
+          ))
+        )}
+      </div>
+      <div className="upcoming-import-list">
+        <label className="field-label">Import meeting as work item</label>
+        {upcoming.length === 0 ? (
+          <span className="muted-note">No upcoming events.</span>
+        ) : (
+          upcoming.map((event) => (
+            <button
+              key={event.id}
+              className="calendar-import-row"
+              type="button"
+              disabled={loading}
+              onClick={() => onImport(event.id)}
+            >
+              <span>
+                {event.day} {event.time}
+              </span>
+              <strong>{event.title}</strong>
+            </button>
+          ))
+        )}
+      </div>
+      {message && <div className="info-box">{message}</div>}
+      {error && <ErrorBox message={error} />}
+    </div>
   );
 }
 
@@ -1170,22 +2661,22 @@ function RequirementPhase({ ticket, onTicketChange, reqArtifact, reqStatus, onBa
   return (
     <section className="screen">
       <HeaderBlock
-        eyebrow="Step 2 - Ticket Review"
-        title="Review the imported ticket"
-        subtitle="Confirm the mapped ticket fields before clarification, impact analysis, testing scope, and handoff."
+        eyebrow="Step 2 - Requirement Triage"
+        title="Check if this ticket is ready"
+        subtitle="Review the business request first. AI checks clarity, missing information, business value, scope, and risk before impact analysis starts."
       />
-      {!reqArtifact && <ProjectContextCard />}
       {!reqArtifact && <TicketSourceCard ticket={ticket} onBack={onBackToInbox} />}
       {!reqArtifact && <TicketIntakeForm ticket={ticket} onChange={onTicketChange} onArtifact={onArtifact} />}
       {reqArtifact && (
         <>
-          <RequirementAnalysisReport artifact={reqArtifact} result={reqArtifact.result || {}} onArtifact={onArtifact} />
-          <div className="action-row">
-            <span className={`status-pill ${reviewed ? "reviewed" : "unreviewed"}`}>{reviewed ? "Reviewed" : "Unreviewed"}</span>
-            <button className="btn primary" type="button" disabled={reviewed || reviewBlocked} onClick={onReview}>
-              {reviewed ? "Reviewed - continuing" : "Mark as reviewed and continue"}
-            </button>
-          </div>
+          <RequirementAnalysisReport
+            artifact={reqArtifact}
+            result={reqArtifact.result || {}}
+            onArtifact={onArtifact}
+            reviewed={reviewed}
+            reviewBlocked={reviewBlocked}
+            onReview={onReview}
+          />
         </>
       )}
     </section>
@@ -1194,14 +2685,18 @@ function RequirementPhase({ ticket, onTicketChange, reqArtifact, reqStatus, onBa
 
 function TicketSourceCard({ ticket, onBack }) {
   return (
-    <section className="ticket-source-card">
-      <div>
-        <label className="field-label">Selected source</label>
-        <h2>{ticket.sourceType || "Manual"}</h2>
-        <p>{ticket.sourceName || "Manual entry"}</p>
+    <section className="ticket-source-card ticket-snapshot-card">
+      <div className="ticket-snapshot-main">
+        <div className="ticket-snapshot-top">
+          <span className="source-pill">{ticket.sourceType || "Manual"}</span>
+          {ticket.ticketKey && <span className="ticket-key-pill">{ticket.ticketKey}</span>}
+          {ticket.priority && <span className={`ticket-priority-pill ${ticket.priority.toLowerCase()}`}>{ticket.priority}</span>}
+        </div>
+        <h2>{ticket.ticketTitle || "Untitled change request"}</h2>
+        <p>{ticket.description || "No description has been mapped yet. Add the business request before running AI review."}</p>
       </div>
       <div className="ticket-source-meta">
-        {ticket.ticketKey && <span>{ticket.ticketKey}</span>}
+        {ticket.reporter && <span>Reporter: {ticket.reporter}</span>}
         {ticket.receivedAt && <span>{ticket.receivedAt}</span>}
         {ticket.sourceUrl && (
           <a href={ticket.sourceUrl} target="_blank" rel="noreferrer">
@@ -1240,38 +2735,10 @@ function ProjectContextCard() {
 
 function TicketIntakeForm({ ticket, onChange, onArtifact }) {
   const [loading, setLoading] = useState(false);
-  const [importKey, setImportKey] = useState("MBC-204");
-  const [importLoading, setImportLoading] = useState(false);
-  const [importMessage, setImportMessage] = useState("");
   const [error, setError] = useState("");
-  const ticketText = formatTicketInput(ticket);
 
   function update(field, value) {
     onChange({ ...ticket, [field]: value });
-  }
-
-  async function importFromJira() {
-    setError("");
-    setImportMessage("");
-    if (!importKey.trim()) {
-      setError("Jira ticket key or URL is required.");
-      return;
-    }
-    setImportLoading(true);
-    try {
-      const response = await api("/api/integrations/jira/import", {
-        method: "POST",
-        body: importKey.includes("/")
-          ? { ticket_url: importKey }
-          : { ticket_key: importKey },
-      });
-      onChange(ticketFromImportResponse(response));
-      setImportMessage(response.message || "Jira ticket imported.");
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setImportLoading(false);
-    }
   }
 
   async function submit() {
@@ -1297,6 +2764,7 @@ function TicketIntakeForm({ ticket, onChange, onArtifact }) {
           description: ticket.description,
           acceptance_criteria: ticket.acceptanceCriteria,
           comments: ticket.comments,
+          code_snippet: ticket.codeSnippet,
         },
       });
       onArtifact(normalizeRequirementResponse(response));
@@ -1308,105 +2776,140 @@ function TicketIntakeForm({ ticket, onChange, onArtifact }) {
   }
 
   return (
-    <section className="work-panel ticket-intake-panel">
-      <section className="jira-import-panel">
+    <section className="ticket-triage-workspace">
+      <article className="triage-action-card">
         <div>
-          <label className="field-label">Import from Jira</label>
-          <p>Dry-run import. The analyst reviews the ticket before running AI analysis.</p>
+          <span className="source-pill">AI readiness check</span>
+          <h2>Can this ticket move forward?</h2>
+          <p>
+            The platform will read the ticket and check whether the analyst has enough information to continue to
+            impact analysis.
+          </p>
         </div>
-        <div className="jira-import-controls">
-          <input
-            type="text"
-            value={importKey}
-            onChange={(event) => setImportKey(event.target.value)}
-            placeholder="MBC-204 or Jira ticket URL"
-          />
-          <button className="btn ghost" type="button" disabled={importLoading} onClick={importFromJira}>
-            {importLoading ? "Importing..." : "Import ticket"}
+        <div className="triage-check-grid">
+          <span>Requirement clarity</span>
+          <span>Missing information</span>
+          <span>Business value</span>
+          <span>Scope boundary</span>
+          <span>Risk priority</span>
+          <span>Testing concern</span>
+        </div>
+        <div className="triage-next-step">
+          <strong>Output</strong>
+          <span>Ready for impact analysis, or clarification needed with questions to ask.</span>
+        </div>
+        {error && <ErrorBox message={error} />}
+        <div className="action-row">
+          <button className="btn primary" type="button" disabled={loading} onClick={submit}>
+            {loading ? "Reviewing..." : "Review Ticket with AI"}
+          </button>
+          <button className="btn ghost compact" type="button" onClick={() => onChange(SAMPLE_TICKET)}>
+            Load sample
           </button>
         </div>
-        {importMessage && <div className="info-box">{importMessage}</div>}
-      </section>
-      <div className="ticket-form-actions">
-        <label className="field-label">Ticket details</label>
-        <button className="btn ghost compact" type="button" onClick={() => onChange(SAMPLE_TICKET)}>
-          Load sample ticket
-        </button>
-      </div>
-      <div className="ticket-meta-grid">
-        <label>
-          Ticket key
+      </article>
+      <article className="ai-restricted-card">
+        <div>
+          <span className="source-pill">GitHub read-only / restricted code</span>
+          <h2>Use copied code evidence when the repo cannot be opened locally</h2>
+          <p>
+            If this platform isn't allowed to scan your repo automatically at all, skip Connect Project entirely —
+            Paste the relevant GitHub file link, PR diff, function, class, or config block here. The platform reads it
+            as limited evidence without cloning or indexing the full repo.
+          </p>
+        </div>
+        <label className="restricted-code-field">
+          GitHub / PR / file URL
           <input
             type="text"
-            value={ticket.ticketKey}
-            onChange={(event) => update("ticketKey", event.target.value)}
-            placeholder="PAY-102"
+            value={ticket.sourceUrl || ""}
+            onChange={(event) => update("sourceUrl", event.target.value)}
+            placeholder="https://github.com/org/repo/blob/main/app/Http/Controllers/DonationController.php"
           />
         </label>
-        <label>
-          Priority
-          <select value={ticket.priority} onChange={(event) => update("priority", event.target.value)}>
-            <option>Low</option>
-            <option>Medium</option>
-            <option>High</option>
-            <option>Critical</option>
-          </select>
-        </label>
-        <label>
-          Reporter
-          <input
-            type="text"
-            value={ticket.reporter}
-            onChange={(event) => update("reporter", event.target.value)}
-            placeholder="Product owner / stakeholder"
-          />
-        </label>
-      </div>
-      <label>
-        Ticket title
-        <input
-          type="text"
-          value={ticket.ticketTitle}
-          onChange={(event) => update("ticketTitle", event.target.value)}
-          placeholder="Short summary from Jira, email, or meeting note"
-        />
-      </label>
-      <label>
-        Description
         <textarea
-          value={ticket.description}
-          onChange={(event) => update("description", event.target.value)}
-          placeholder="Describe the requested business change"
+          className="compact-textarea code-snippet-textarea"
+          value={ticket.codeSnippet || ""}
+          onChange={(event) => update("codeSnippet", event.target.value)}
+          placeholder="Paste the relevant function, class, config block, or PR diff here"
         />
-      </label>
-      <label>
-        Acceptance criteria
-        <textarea
-          className="compact-textarea"
-          value={ticket.acceptanceCriteria}
-          onChange={(event) => update("acceptanceCriteria", event.target.value)}
-          placeholder="Given / when / then, validation rules, or expected outcome"
-        />
-      </label>
-      <label>
-        Comments / clarification history
-        <textarea
-          className="compact-textarea"
-          value={ticket.comments}
-          onChange={(event) => update("comments", event.target.value)}
-          placeholder="Stakeholder comments, email notes, or meeting follow-up"
-        />
-      </label>
-      <details className="ticket-preview">
-        <summary>Preview analysis input</summary>
-        <pre>{ticketText || "(ticket details will appear here)"}</pre>
+        <div className="limited-evidence-note">
+          <strong>Limited evidence mode</strong>
+          <span>Impact analysis will be lower-confidence unless a full project is connected and indexed.</span>
+        </div>
+      </article>
+      <details className="ticket-edit-drawer">
+        <summary>
+          <span>Edit ticket details</span>
+          <small>Use this only when imported fields need cleanup before AI review.</small>
+        </summary>
+        <div className="ticket-edit-body">
+          <div className="ticket-meta-grid">
+            <label>
+              Ticket key
+              <input
+                type="text"
+                value={ticket.ticketKey}
+                onChange={(event) => update("ticketKey", event.target.value)}
+                placeholder="PAY-102"
+              />
+            </label>
+            <label>
+              Priority
+              <select value={ticket.priority} onChange={(event) => update("priority", event.target.value)}>
+                <option>Low</option>
+                <option>Medium</option>
+                <option>High</option>
+                <option>Critical</option>
+              </select>
+            </label>
+            <label>
+              Reporter
+              <input
+                type="text"
+                value={ticket.reporter}
+                onChange={(event) => update("reporter", event.target.value)}
+                placeholder="Product owner / stakeholder"
+              />
+            </label>
+          </div>
+          <label>
+            Ticket title
+            <input
+              type="text"
+              value={ticket.ticketTitle}
+              onChange={(event) => update("ticketTitle", event.target.value)}
+              placeholder="Short summary from Jira, email, or meeting note"
+            />
+          </label>
+          <label>
+            Description
+            <textarea
+              value={ticket.description}
+              onChange={(event) => update("description", event.target.value)}
+              placeholder="Describe the requested business change"
+            />
+          </label>
+          <label>
+            Acceptance criteria
+            <textarea
+              className="compact-textarea"
+              value={ticket.acceptanceCriteria}
+              onChange={(event) => update("acceptanceCriteria", event.target.value)}
+              placeholder="Given / when / then, validation rules, or expected outcome"
+            />
+          </label>
+          <label>
+            Comments / clarification notes
+            <textarea
+              className="compact-textarea"
+              value={ticket.comments}
+              onChange={(event) => update("comments", event.target.value)}
+              placeholder="Stakeholder comments, email notes, or meeting follow-up"
+            />
+          </label>
+        </div>
       </details>
-      {error && <ErrorBox message={error} />}
-      <div className="action-row">
-        <button className="btn primary" type="button" disabled={loading} onClick={submit}>
-          {loading ? "Analysing..." : "Analyze Ticket"}
-        </button>
-      </div>
     </section>
   );
 }
@@ -1434,17 +2937,29 @@ function ImpactPhase({ loading, error, artifact, onRetry, onReview, onBack, onNe
       )}
       {artifact && !loading && (
         <>
-          <div className="stat-grid">
-            <Stat label="Risk level" value={<Tag kind="risk" value={result.risk_level} />} />
-            <Stat
-              label="Rough effort"
-              value={`${result.rough_effort?.estimate || "?"}${result.rough_effort?.basis ? ` - ${result.rough_effort.basis}` : ""}`}
-            />
-            <Stat label="Confidence" value={<Tag kind="confidence" value={result.confidence} />} />
-          </div>
-          <EvidenceList title="Affected modules" items={result.affected_modules || []} sourceKey="path" claimKey="reason" />
-          <EvidenceList title="Related historical issues" items={result.risk_notes || []} sourceKey="evidence" claimKey="note" />
-          {(result.missing_evidence || []).length > 0 && <SimpleList title="Missing evidence" items={result.missing_evidence} tone="danger" />}
+          <ImpactVisualSummary result={result} />
+          <EvidenceTraceabilityPanel
+            title="Impact evidence traceability"
+            subtitle="Connects each affected area or risk back to codebase, memory, or missing evidence."
+            items={buildImpactTraceability(result)}
+          />
+          <section className="triage-detail-stack impact-detail-stack">
+            <details className="triage-detail-panel">
+              <summary>
+                <span>Affected module evidence</span>
+                <small>{(result.affected_modules || []).length} modules</small>
+              </summary>
+              <EvidenceList title="Affected modules" items={result.affected_modules || []} sourceKey="path" claimKey="reason" />
+            </details>
+            <details className="triage-detail-panel">
+              <summary>
+                <span>Risks & missing evidence</span>
+                <small>{(result.risk_notes || []).length} notes / {(result.missing_evidence || []).length} missing</small>
+              </summary>
+              <EvidenceList title="Related historical issues" items={result.risk_notes || []} sourceKey="evidence" claimKey="note" />
+              {(result.missing_evidence || []).length > 0 && <SimpleList title="Missing evidence" items={result.missing_evidence} tone="danger" />}
+            </details>
+          </section>
           <div className="action-row">
             <span className={`status-pill ${reviewed ? "reviewed" : "unreviewed"}`}>{reviewed ? "Reviewed" : "Unreviewed"}</span>
             <button className="btn primary" type="button" disabled={reviewed} onClick={onReview}>
@@ -1474,16 +2989,22 @@ function TestPhase({ impactArtifact, testArtifacts, testScopeArtifacts, onGenera
         title="Prepare the testing scope"
         subtitle="Generate scenarios from impacted modules, then accept, reject, edit, and prioritize cases before handoff."
       />
+      <TestingCoverageMap modules={modules} testArtifacts={testArtifacts} reviewedScopeCount={reviewedScopeCount} />
       {modules.length === 0 && <SimpleList title="Affected modules" items={["No affected modules resolved in the project graph."]} />}
       {modules.length > 0 && (
-        <div className="skill-grid">
+        <details className="triage-detail-panel test-target-panel" open={testArtifacts.length === 0}>
+          <summary>
+            <span>Generate more test plans</span>
+            <small>{modules.length} impacted areas</small>
+          </summary>
+          <div className="test-target-grid">
           {modules.map((item) => {
             const done = testArtifacts.some((entry) => entry.result?.target === item.name);
             return (
               <button
                 key={item.name}
                 type="button"
-                className={`skill-tab ${done ? "active" : ""}`}
+                className={`test-target-card ${done ? "active" : ""}`}
                 disabled={loadingTarget === item.name}
                 onClick={async () => {
                   setLoadingTarget(item.name);
@@ -1499,10 +3020,15 @@ function TestPhase({ impactArtifact, testArtifacts, testScopeArtifacts, onGenera
               </button>
             );
           })}
-        </div>
+          </div>
+        </details>
       )}
       {testArtifacts.map((item) => (
-        <section key={item.task_id} className="list-section">
+        <section key={item.task_id} className="test-plan-section">
+          <div className="test-plan-title">
+            <span className="source-pill">Test plan</span>
+            <h3>{item.result?.target}</h3>
+          </div>
           <h3>Test plan · {item.result?.target}</h3>
           <TestGenReport result={item.result || {}} />
           <TestScopeManager
@@ -1521,6 +3047,67 @@ function TestPhase({ impactArtifact, testArtifacts, testScopeArtifacts, onGenera
           {reviewedScopeCount > 0 ? "Continue with reviewed test scope" : "Continue with generated tests"}
         </button>
       </div>
+    </section>
+  );
+}
+
+function TestingCoverageMap({ modules, testArtifacts, reviewedScopeCount }) {
+  const generatedTargets = new Set(testArtifacts.map((item) => item.result?.target).filter(Boolean));
+  const missingTargets = modules.filter((item) => item.name && !generatedTargets.has(item.name));
+  const generatedCases = testArtifacts.flatMap((item) => item.result?.cases || []);
+  const missingEvidenceCount = testArtifacts.reduce((count, item) => count + (item.result?.missing_evidence || []).length, 0);
+  return (
+    <section className="testing-coverage-map">
+      <div className="testing-map-head">
+        <div>
+          <span className="source-pill">Testing coverage map</span>
+          <h2>Impact area to QA/UAT scope</h2>
+          <p>Generate only useful coverage, then accept must-test items and move low-value cases to backlog.</p>
+        </div>
+        <div className="testing-map-metrics">
+          <span>
+            <strong>{modules.length}</strong>
+            Impact areas
+          </span>
+          <span>
+            <strong>{testArtifacts.length}</strong>
+            Test plans
+          </span>
+          <span>
+            <strong>{generatedCases.length}</strong>
+            Cases
+          </span>
+          <span>
+            <strong>{reviewedScopeCount}</strong>
+            Reviewed
+          </span>
+        </div>
+      </div>
+      <div className="testing-flow-map">
+        <div className="testing-flow-node">
+          <span>Input</span>
+          <strong>{modules.length} impacted areas</strong>
+          <small>From impact analysis</small>
+        </div>
+        <div className="impact-flow-arrow">-&gt;</div>
+        <div className="testing-flow-node">
+          <span>AI suggested</span>
+          <strong>{generatedCases.length} test cases</strong>
+          <small>{missingEvidenceCount > 0 ? `${missingEvidenceCount} missing evidence warning(s)` : "Evidence checked"}</small>
+        </div>
+        <div className="impact-flow-arrow">-&gt;</div>
+        <div className="testing-flow-node">
+          <span>Analyst decision</span>
+          <strong>Accept / backlog / reject</strong>
+          <small>Prepare QA and UAT scope</small>
+        </div>
+      </div>
+      {missingTargets.length > 0 && (
+        <div className="testing-map-warning">
+          <strong>{missingTargets.length} impacted area(s) still have no generated tests.</strong>
+          <span>Generate only the areas that matter for this change.</span>
+        </div>
+      )}
     </section>
   );
 }
@@ -1564,6 +3151,8 @@ function ReportPhase({
             <Stat label="Reviewed test scopes" value={reviewedScopeCount} />
           </div>
           <SimpleList title="Business rules" items={reqResult.business_rules || []} />
+          <RequirementDecisionPanel result={reqResult} />
+          <ProjectRisks items={reqResult.project_risks || []} />
           <SimpleList title="Assumptions" items={reqResult.assumptions || []} />
           <EvidenceList title="Affected modules" items={impactResult.affected_modules || []} sourceKey="path" claimKey="reason" />
           <SimpleList
@@ -1947,39 +3536,312 @@ function ReportScreen({ artifact, role, handoffs, onReviewed, onRunAnother, onCh
   );
 }
 
-function RequirementAnalysisReport({ artifact, result, onArtifact }) {
+function RequirementAnalysisReport({ artifact, result, onArtifact, reviewed, reviewBlocked, onReview }) {
   const status = getRequirementStatus(artifact);
   const ambiguities = result.ambiguities || [];
   const scopeClues = cleanScopeClues(result.potential_affected_areas || []);
   const analystConcerns = result.analyst_concerns || [];
+  const projectRisks = result.project_risks || [];
+  const missingInformation = result.missing_information || [];
+  const ready = status !== "NEEDS_CLARIFICATION";
+  const scope = result.scope_boundary || {};
+  const hasScope =
+    (scope.in_scope || []).length > 0 ||
+    (scope.out_of_scope || []).length > 0 ||
+    (scope.dependencies || []).length > 0;
   return (
     <>
-      <div className="stat-grid">
-        <Stat label="Workflow status" value={<span className={`tag ${statusClass(status)}`}>{formatStatus(status)}</span>} />
-        <Stat label="Confidence" value={<Tag kind="confidence" value={result.confidence} />} />
-        <Stat label="Scope clues" value={scopeClues.length} />
-      </div>
-      <SimpleList title="Business rules" items={result.business_rules || []} />
-      <SimpleList title="Missing information" items={result.missing_information || []} tone={status === "NEEDS_CLARIFICATION" ? "danger" : undefined} />
-      <SimpleList title="Assumptions" items={result.assumptions || []} />
-      <AnalystConcerns items={analystConcerns} />
-      <ScopeClues items={scopeClues} />
-      {ambiguities.length > 0 && (
-        <section className="list-section">
-          <h3>Ambiguities</h3>
-          <ul className="evidence-list">
-            {ambiguities.map((item, index) => (
-              <li key={index}>
-                <code>{item.evidence || "requirement text"}</code>
-                <span>{item.note}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      <EvidenceList title="Evidence" items={result.evidence || []} sourceKey="source" claimKey="claim" />
+      <section className={`triage-decision-bar ${ready ? "ready" : "needs-clarification"}`}>
+        <div className="triage-decision-copy">
+          <span className={`status-pill ${ready ? "reviewed" : "unreviewed"}`}>{ready ? "Ready" : "Needs clarification"}</span>
+          <h2>{ready ? "Continue to impact analysis" : "Clarify before impact analysis"}</h2>
+          <p>{ready ? "The request is usable. Confirm review to move forward." : "Answer the missing points first, then rerun triage."}</p>
+        </div>
+        <div className="triage-decision-metrics">
+          <span>
+            <strong>{String(result.confidence || "unknown").toUpperCase()}</strong>
+            Confidence
+          </span>
+          <span>
+            <strong>{missingInformation.length}</strong>
+            Missing
+          </span>
+          <span>
+            <strong>{projectRisks.length}</strong>
+            Risks
+          </span>
+          <span>
+            <strong>{scopeClues.length}</strong>
+            Areas
+          </span>
+        </div>
+        {onReview && (
+          <div className="triage-decision-action">
+            <button className="btn primary" type="button" disabled={reviewed || reviewBlocked} onClick={onReview}>
+              {reviewed ? "Reviewed" : ready ? "Mark reviewed and continue" : "Clarification required"}
+            </button>
+          </div>
+        )}
+      </section>
       {status === "NEEDS_CLARIFICATION" && <ClarificationPanel artifact={artifact} onArtifact={onArtifact} />}
+      <section className="triage-summary-grid">
+        <article className="triage-summary-card business">
+          <span className="source-pill">Business value</span>
+          <p>{result.business_value || "No business value was detected. Confirm why this change matters before delivery starts."}</p>
+        </article>
+        <article className="triage-summary-card scope">
+          <span className="source-pill">Scope boundary</span>
+          {hasScope ? <ScopeBoundaryCompact scope={scope} /> : <p>No clear scope boundary detected yet.</p>}
+        </article>
+        <article className="triage-summary-card risks">
+          <span className="source-pill">Top risks</span>
+          <TopRisksCompact items={projectRisks} />
+        </article>
+      </section>
+      <EvidenceTraceabilityPanel
+        title="Requirement evidence traceability"
+        subtitle="Shows which ticket detail, AI finding, or memory item supports the triage decision."
+        items={buildRequirementTraceability(result)}
+      />
+      <section className="triage-detail-stack">
+        <details className="triage-detail-panel" open={missingInformation.length > 0}>
+          <summary>
+            <span>Clarification & rules</span>
+            <small>{missingInformation.length} missing / {(result.business_rules || []).length} rules</small>
+          </summary>
+          <SimpleList title="Missing information" items={missingInformation} tone={status === "NEEDS_CLARIFICATION" ? "danger" : undefined} />
+          <SimpleList title="Business rules" items={result.business_rules || []} />
+          <SimpleList title="Assumptions" items={result.assumptions || []} />
+          {ambiguities.length > 0 && (
+            <section className="list-section">
+              <h3>Ambiguities</h3>
+              <ul className="evidence-list">
+                {ambiguities.map((item, index) => (
+                  <li key={index}>
+                    <code>{item.evidence || "requirement text"}</code>
+                    <span>{item.note}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </details>
+        <details className="triage-detail-panel">
+          <summary>
+            <span>Scope, concerns & risks</span>
+            <small>{analystConcerns.length} concerns / {projectRisks.length} risks</small>
+          </summary>
+          <RequirementDecisionPanel result={result} />
+          <AnalystConcerns items={analystConcerns} />
+          <ProjectRisks items={projectRisks} />
+          <ScopeClues items={scopeClues} />
+        </details>
+        <details className="triage-detail-panel">
+          <summary>
+            <span>Evidence & memory</span>
+            <small>{(result.evidence || []).length} evidence / {(result.similar_past_changes || []).length} matches</small>
+          </summary>
+          <EvidenceList title="Evidence" items={result.evidence || []} sourceKey="source" claimKey="claim" />
+          <SimilarPastChanges items={result.similar_past_changes || []} />
+          <ClarificationHistoryPanel artifact={artifact} />
+        </details>
+      </section>
     </>
+  );
+}
+
+function ScopeBoundaryCompact({ scope }) {
+  const inScope = scope.in_scope || [];
+  const outOfScope = scope.out_of_scope || [];
+  const dependencies = scope.dependencies || [];
+  return (
+    <div className="scope-compact-grid">
+      <ScopeCompactColumn title="In" items={inScope} />
+      <ScopeCompactColumn title="Out" items={outOfScope} />
+      <ScopeCompactColumn title="Depends" items={dependencies} />
+    </div>
+  );
+}
+
+function ScopeCompactColumn({ title, items }) {
+  return (
+    <div className="scope-compact-column">
+      <strong>{title}</strong>
+      <span>{items[0] || "None detected"}</span>
+      {items.length > 1 && <small>+{items.length - 1} more</small>}
+    </div>
+  );
+}
+
+function TopRisksCompact({ items }) {
+  if (!items.length) {
+    return <p>No project risks detected.</p>;
+  }
+  return (
+    <ul className="top-risk-list">
+      {items.slice(0, 3).map((item, index) => {
+        const priority = (item.priority || "P3").toUpperCase();
+        const severity = item.severity || (priority === "P1" ? "high" : priority === "P2" ? "medium" : "low");
+        return (
+          <li key={`${priority}-${item.area || "risk"}-${index}`}>
+            <span className={`tag ${severity === "high" ? "bad" : severity === "medium" ? "warn" : "good"}`}>{priority}</span>
+            <strong>{formatScopeClue(item.area || "project risk")}</strong>
+            <p>{item.reason}</p>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/**
+ * Past reviewed tickets whose memory card (MemoryCardService) overlapped this
+ * ticket's text — "Memory" retrieval, not a live evidence citation, so it
+ * gets its own section rather than folding into EvidenceList.
+ */
+function SimilarPastChanges({ items }) {
+  if (!items.length) return null;
+  return (
+    <section className="list-section similar-past-changes-section">
+      <h3>Similar past changes</h3>
+      <ul className="simple-list">
+        {items.map((item) => (
+          <li key={item.task_id}>
+            <div className="similar-past-change-row">
+              <span className="source-pill">Match score {item.score}</span>
+              <span className="muted-note">{formatDate(item.reviewed_at)}</span>
+            </div>
+            <p>{item.summary}</p>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function ClarificationHistoryPanel({ artifact }) {
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const items = await api(`/api/artifacts/${artifact.task_id}/clarification-history`);
+        if (!cancelled) setHistory(items);
+      } catch {
+        if (!cancelled) setHistory([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [artifact.task_id]);
+
+  if (loading || history.length < 2) {
+    return null;
+  }
+
+  return (
+    <section className="list-section clarification-history-section">
+      <h3>Clarification history</h3>
+      <div className="clarification-history-list">
+        {history.map((round, index) => (
+          <article key={round.task_id} className="clarification-history-round">
+            <div className="clarification-history-top">
+              <span className="source-pill">Round {index + 1}</span>
+              <span>{formatDate(round.created_at)}</span>
+            </div>
+            {round.clarification_answered && (
+              <p>
+                <strong>Analyst answered:</strong> {round.clarification_answered}
+              </p>
+            )}
+            {round.missing_information.length > 0 ? (
+              <SimpleList title="Still missing after this round" items={round.missing_information} tone="danger" />
+            ) : (
+              <p className="muted-note">No missing information after this round.</p>
+            )}
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function RequirementDecisionPanel({ result }) {
+  const scope = result.scope_boundary || {};
+  const hasScope =
+    (scope.in_scope || []).length > 0 ||
+    (scope.out_of_scope || []).length > 0 ||
+    (scope.dependencies || []).length > 0;
+  const businessValue = result.business_value;
+  if (!businessValue && !hasScope) return null;
+  return (
+    <section className="decision-panel">
+      {businessValue && (
+        <article className="decision-card business-value-card">
+          <span className="source-pill">Business value</span>
+          <p>{businessValue}</p>
+        </article>
+      )}
+      {hasScope && (
+        <article className="decision-card scope-boundary-card">
+          <span className="source-pill">Scope boundary</span>
+          <div className="scope-boundary-grid">
+            <ScopeBoundaryColumn title="In scope" items={scope.in_scope || []} />
+            <ScopeBoundaryColumn title="Out of scope" items={scope.out_of_scope || []} />
+            <ScopeBoundaryColumn title="Dependencies" items={scope.dependencies || []} />
+          </div>
+        </article>
+      )}
+    </section>
+  );
+}
+
+function ScopeBoundaryColumn({ title, items }) {
+  return (
+    <div className="scope-boundary-column">
+      <strong>{title}</strong>
+      {items.length > 0 ? (
+        <ul>
+          {items.map((item, index) => (
+            <li key={index}>{item}</li>
+          ))}
+        </ul>
+      ) : (
+        <span className="empty-inline">None detected</span>
+      )}
+    </div>
+  );
+}
+
+function ProjectRisks({ items }) {
+  if (!items.length) return null;
+  return (
+    <section className="list-section project-risks-section">
+      <h3>Project risks</h3>
+      <div className="project-risk-grid">
+        {items.map((item, index) => {
+          const priority = (item.priority || "P3").toUpperCase();
+          const severity = item.severity || (priority === "P1" ? "high" : priority === "P2" ? "medium" : "low");
+          return (
+            <article key={`${priority}-${item.area || "risk"}-${index}`} className={`project-risk-card ${severity}`}>
+              <div className="project-risk-top">
+                <span className={`tag ${severity === "high" ? "bad" : severity === "medium" ? "warn" : "good"}`}>{priority}</span>
+                <span className="concern-category">{formatScopeClue(item.area || "project risk")}</span>
+              </div>
+              <p>{item.reason}</p>
+              {item.mitigation && <strong>Mitigation: {item.mitigation}</strong>}
+              {item.owner && <small>Owner: {item.owner}</small>}
+            </article>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -2148,22 +4010,154 @@ function ImpactReport({ artifact, result, handoffs, onArtifact, onReloadHandoffs
   const reviewed = Boolean(artifact.reviewed);
   return (
     <>
-      <div className="stat-grid">
-        <Stat label="Risk level" value={<Tag kind="risk" value={result.risk_level} />} />
-        <Stat label="Rough effort" value={`${result.rough_effort?.estimate || "?"}${result.rough_effort?.basis ? ` - ${result.rough_effort.basis}` : ""}`} />
-        <Stat label="Confidence" value={<Tag kind="confidence" value={result.confidence} />} />
-      </div>
+      <ImpactVisualSummary result={result} />
+      <EvidenceTraceabilityPanel
+        title="Impact evidence traceability"
+        subtitle="Connects each affected area or risk back to codebase, memory, or missing evidence."
+        items={buildImpactTraceability(result)}
+      />
       {reviewed && (
         <div className="handoff-grid">
           <TimelineHandoff artifact={artifact} onArtifact={onArtifact} />
           <ExternalHandoff artifact={artifact} handoffs={handoffs} onReload={onReloadHandoffs} />
         </div>
       )}
-      <ModuleList artifact={artifact} modules={result.affected_modules || []} reviewed={reviewed} onArtifact={onArtifact} />
-      <EvidenceList title="Related historical issues" items={result.risk_notes || []} sourceKey="evidence" claimKey="note" />
-      {(result.missing_evidence || []).length > 0 && <SimpleList title="Missing evidence" items={result.missing_evidence} tone="danger" />}
+      <section className="triage-detail-stack impact-detail-stack">
+        <details className="triage-detail-panel">
+          <summary>
+            <span>Affected module evidence</span>
+            <small>{(result.affected_modules || []).length} modules</small>
+          </summary>
+          <ModuleList artifact={artifact} modules={result.affected_modules || []} reviewed={reviewed} onArtifact={onArtifact} />
+        </details>
+        <details className="triage-detail-panel">
+          <summary>
+            <span>Risks & memory</span>
+            <small>{(result.risk_notes || []).length} notes / {(result.similar_past_changes || []).length} matches</small>
+          </summary>
+          <EvidenceList title="Related historical issues" items={result.risk_notes || []} sourceKey="evidence" claimKey="note" />
+          {(result.missing_evidence || []).length > 0 && <SimpleList title="Missing evidence" items={result.missing_evidence} tone="danger" />}
+          <SimilarPastChanges items={result.similar_past_changes || []} />
+        </details>
+      </section>
     </>
   );
+}
+
+function ImpactVisualSummary({ result }) {
+  const modules = result.affected_modules || [];
+  const groups = groupImpactModules(modules);
+  const primaryGroups = groups.filter((group) => group.items.length > 0).slice(0, 4);
+  const effort = `${result.rough_effort?.estimate || "?"}${result.rough_effort?.basis ? ` - ${result.rough_effort.basis}` : ""}`;
+  return (
+    <section className="impact-visual-panel">
+      <div className="impact-visual-head">
+        <div>
+          <span className="source-pill">Blast radius map</span>
+          <h2>Requirement impact flow</h2>
+          <p>Follow the change from reviewed requirement to affected project areas, then into testing and handoff.</p>
+        </div>
+        <div className="impact-visual-metrics">
+          <span>
+            <strong>{String(result.risk_level || "unknown").toUpperCase()}</strong>
+            Risk
+          </span>
+          <span>
+            <strong>{modules.length}</strong>
+            Modules
+          </span>
+          <span>
+            <strong>{String(result.confidence || "unknown").toUpperCase()}</strong>
+            Confidence
+          </span>
+        </div>
+      </div>
+      <div className="impact-flow-map" aria-label="Impact flow diagram">
+        <div className="impact-flow-node source">
+          <span>Upstream</span>
+          <strong>Reviewed requirement</strong>
+          <small>Confirmed ticket scope</small>
+        </div>
+        <div className="impact-flow-arrow">-&gt;</div>
+        <div className="impact-flow-node mcp">
+          <span>Analysis</span>
+          <strong>Project graph + MCP</strong>
+          <small>{effort}</small>
+        </div>
+        <div className="impact-flow-arrow">-&gt;</div>
+        <div className="impact-flow-groups">
+          {primaryGroups.length > 0 ? (
+            primaryGroups.map((group) => (
+              <div key={group.key} className={`impact-area-node ${group.key}`}>
+                <span>{group.label}</span>
+                <strong>{group.items.length}</strong>
+                <small>{group.items.slice(0, 2).map((item) => shortModulePath(item.path || item.name)).join(", ")}</small>
+              </div>
+            ))
+          ) : (
+            <div className="impact-area-node other">
+              <span>No modules</span>
+              <strong>0</strong>
+              <small>No affected area resolved</small>
+            </div>
+          )}
+        </div>
+        <div className="impact-flow-arrow">-&gt;</div>
+        <div className="impact-flow-node downstream">
+          <span>Downstream</span>
+          <strong>Testing scope</strong>
+          <small>Generate cases, review, handoff</small>
+        </div>
+      </div>
+      <ImpactGroupSummary groups={groups} />
+    </section>
+  );
+}
+
+function ImpactGroupSummary({ groups }) {
+  const visible = groups.filter((group) => group.items.length > 0);
+  if (!visible.length) return null;
+  return (
+    <div className="impact-group-summary">
+      {visible.map((group) => (
+        <article key={group.key}>
+          <div>
+            <span className={`impact-dot ${group.key}`} />
+            <strong>{group.label}</strong>
+          </div>
+          <p>{group.items.length} affected</p>
+          <small>{group.items.slice(0, 3).map((item) => shortModulePath(item.path || item.name)).join(" / ")}</small>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function groupImpactModules(modules) {
+  const groups = [
+    { key: "ui", label: "UI / Views", items: [] },
+    { key: "logic", label: "Business logic", items: [] },
+    { key: "data", label: "Data model", items: [] },
+    { key: "notification", label: "Notifications", items: [] },
+    { key: "test", label: "Tests", items: [] },
+    { key: "other", label: "Other", items: [] },
+  ];
+  const byKey = Object.fromEntries(groups.map((group) => [group.key, group]));
+  modules.forEach((module) => {
+    const path = String(module.path || module.name || "").toLowerCase();
+    if (path.includes("test")) byKey.test.items.push(module);
+    else if (path.includes("notification") || path.includes("mail")) byKey.notification.items.push(module);
+    else if (path.includes("model") || path.includes("migration") || path.includes("database")) byKey.data.items.push(module);
+    else if (path.includes("view") || path.includes("blade") || path.includes("frontend") || path.includes("resource")) byKey.ui.items.push(module);
+    else if (path.includes("controller") || path.includes("service") || path.includes("http") || path.includes("app/")) byKey.logic.items.push(module);
+    else byKey.other.items.push(module);
+  });
+  return groups;
+}
+
+function shortModulePath(path) {
+  const parts = String(path || "").split(/[\\/]/).filter(Boolean);
+  return parts.slice(-2).join("/") || String(path || "unknown");
 }
 
 function TimelineHandoff({ artifact, onArtifact }) {
@@ -2217,18 +4211,36 @@ function TimelineHandoff({ artifact, onArtifact }) {
 
 function ExternalHandoff({ artifact, handoffs, onReload, initialSummary = "Reviewed impact analysis" }) {
   const [summary, setSummary] = useState(initialSummary);
+  const [jiraIssueKey, setJiraIssueKey] = useState("");
+  const [commentDraft, setCommentDraft] = useState(() => buildJiraCommentDraft(artifact, initialSummary));
   const [prUrl, setPrUrl] = useState("");
   const [dryRun, setDryRun] = useState(true);
+  const [approved, setApproved] = useState(false);
   const [loading, setLoading] = useState("");
   const [error, setError] = useState("");
+  const result = artifact.result || {};
+  const affectedCount = result.affected_modules?.length || result.affectedModules?.length || 0;
+  const testCount = result.test_scenarios?.length || result.testScenarios?.length || result.test_cases?.length || result.testCases?.length || 0;
+  const riskLevel = result.risk_level || result.riskLevel || "not stated";
 
   async function send(destination) {
     setError("");
+    if (!approved) {
+      setError("Analyst approval is required before sending this handoff outside the platform.");
+      return;
+    }
     setLoading(destination);
     try {
       await api(`/api/artifacts/${artifact.task_id}/external-handoff`, {
         method: "POST",
-        body: { destination, summary, pr_url: prUrl, dry_run: dryRun },
+        body: {
+          destination,
+          summary,
+          description: commentDraft,
+          pr_url: prUrl,
+          jira_issue_key: jiraIssueKey,
+          dry_run: dryRun,
+        },
       });
       await onReload();
     } catch (err) {
@@ -2241,20 +4253,58 @@ function ExternalHandoff({ artifact, handoffs, onReload, initialSummary = "Revie
   return (
     <section className="handoff-panel">
       <h3>Controlled external handoff</h3>
+      <div className="handoff-approval-box">
+        <div>
+          <span className="source-pill">AI draft reviewed</span>
+          <strong>Human approval required before Jira or PR update</strong>
+          <p>
+            This handoff uses reviewed artifact <code>{artifact.task_id}</code>. Confirm the summary and evidence before sending it to an external tool.
+          </p>
+        </div>
+        <div className="handoff-approval-metrics">
+          <span>
+            <strong>{String(riskLevel).toUpperCase()}</strong>
+            Risk
+          </span>
+          <span>
+            <strong>{affectedCount}</strong>
+            Modules
+          </span>
+          <span>
+            <strong>{testCount}</strong>
+            Tests
+          </span>
+        </div>
+      </div>
       <label className="field-label">Summary</label>
       <input type="text" value={summary} onChange={(event) => setSummary(event.target.value)} />
+      <label className="field-label">Jira issue key for comment</label>
+      <input type="text" value={jiraIssueKey} onChange={(event) => setJiraIssueKey(event.target.value)} placeholder="KAN-1" />
+      <label className="field-label">Jira comment draft</label>
+      <textarea
+        className="compact-textarea jira-comment-draft"
+        value={commentDraft}
+        onChange={(event) => setCommentDraft(event.target.value)}
+      />
       <label className="field-label">Bitbucket PR URL</label>
       <input type="text" value={prUrl} onChange={(event) => setPrUrl(event.target.value)} placeholder="https://bitbucket.org/workspace/repo/pull-requests/123" />
       <label className="check">
         <input type="checkbox" checked={dryRun} onChange={(event) => setDryRun(event.target.checked)} />
         Dry-run only
       </label>
+      <label className="check approval-check">
+        <input type="checkbox" checked={approved} onChange={(event) => setApproved(event.target.checked)} />
+        I reviewed the AI draft and approve this external handoff.
+      </label>
       {error && <ErrorBox message={error} />}
       <div className="action-row">
-        <button className="btn primary" type="button" disabled={Boolean(loading)} onClick={() => send("jira")}>
+        <button className="btn primary" type="button" disabled={Boolean(loading) || !approved} onClick={() => send("jira")}>
           {loading === "jira" ? "Creating..." : "Create Jira Issue"}
         </button>
-        <button className="btn ghost" type="button" disabled={Boolean(loading)} onClick={() => send("bitbucket")}>
+        <button className="btn ghost" type="button" disabled={Boolean(loading) || !approved || !jiraIssueKey.trim()} onClick={() => send("jira-comment")}>
+          {loading === "jira-comment" ? "Posting..." : "Post Jira Comment"}
+        </button>
+        <button className="btn ghost" type="button" disabled={Boolean(loading) || !approved} onClick={() => send("bitbucket")}>
           {loading === "bitbucket" ? "Posting..." : "Comment Bitbucket PR"}
         </button>
       </div>
@@ -2277,6 +4327,47 @@ function ExternalHandoff({ artifact, handoffs, onReload, initialSummary = "Revie
       </ul>
     </section>
   );
+}
+
+function buildJiraCommentDraft(artifact, fallbackTitle) {
+  const result = artifact.result || {};
+  const lines = [
+    `${fallbackTitle}`,
+    "",
+    `Artifact: ${artifact.task_id}`,
+    `Skill: ${artifact.skill}`,
+    "",
+  ];
+  if (result.requirement_summary) {
+    lines.push("Requirement summary:", result.requirement_summary, "");
+  }
+  if (result.risk_level) {
+    lines.push(`Risk level: ${String(result.risk_level).toUpperCase()}`);
+  }
+  if (result.confidence) {
+    lines.push(`Confidence: ${String(result.confidence).toUpperCase()}`);
+  }
+  const affected = result.affected_modules || [];
+  if (affected.length > 0) {
+    lines.push("", "Affected areas:");
+    affected.slice(0, 5).forEach((item) => {
+      lines.push(`- ${item.path || item.name || "Affected module"}: ${item.reason || "Review required"}`);
+    });
+  }
+  const risks = result.risk_notes || result.project_risks || [];
+  if (risks.length > 0) {
+    lines.push("", "Risks / follow-up:");
+    risks.slice(0, 5).forEach((item) => {
+      lines.push(`- ${item.note || item.reason || item.mitigation || item}`);
+    });
+  }
+  const missing = result.missing_evidence || result.missing_information || [];
+  if (missing.length > 0) {
+    lines.push("", "Needs confirmation:");
+    missing.slice(0, 5).forEach((item) => lines.push(`- ${item}`));
+  }
+  lines.push("", "Analyst decision: Reviewed and ready for team follow-up.");
+  return lines.filter((line, index, all) => line !== "" || all[index - 1] !== "").join("\n").trim();
 }
 
 function ModuleList({ artifact, modules, reviewed, onArtifact }) {
@@ -2350,6 +4441,8 @@ function TestScopeManager({ testArtifact, scopeArtifact, onSave, onReview }) {
   const [error, setError] = useState("");
   const result = scopeArtifact?.result || {};
   const reviewed = Boolean(scopeArtifact?.reviewed);
+  const scopeCounts = countManagedCases(cases);
+  const missingEvidence = testArtifact.result?.missing_evidence || [];
 
   function updateCase(index, patch) {
     setCases((prev) => prev.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)));
@@ -2414,6 +4507,31 @@ function TestScopeManager({ testArtifact, scopeArtifact, onSave, onReview }) {
           </span>
         )}
       </div>
+      <div className="test-scope-decision-bar">
+        <div>
+          <strong>{scopeCounts.accepted} must test</strong>
+          <span>{scopeCounts.backlog} backlog / {scopeCounts.rejected} rejected</span>
+        </div>
+        <div className="test-scope-status-pills">
+          <span>{scopeCounts.high} high priority</span>
+          <span>{cases.length} total cases</span>
+        </div>
+        <div className="test-scope-actions">
+          <button className="btn primary compact" type="button" disabled={Boolean(loading)} onClick={saveScope}>
+            {loading === "save" ? "Saving..." : scopeArtifact ? "Save scope" : "Save testing scope"}
+          </button>
+          <button className="btn ghost compact" type="button" disabled={!scopeArtifact || reviewed || Boolean(loading)} onClick={markReviewed}>
+            {reviewed ? "Reviewed" : loading === "review" ? "Reviewing..." : "Mark reviewed"}
+          </button>
+        </div>
+      </div>
+      {missingEvidence.length > 0 && (
+        <div className="testing-warning-banner">
+          <strong>Confirm before final QA/UAT scope.</strong>
+          <span>{missingEvidence[0]}</span>
+        </div>
+      )}
+      <TestScopeBoard cases={cases} onChange={updateCase} />
       <div className="test-case-editor-list">
         {cases.map((item, index) => (
           <div key={`${item.id}-${index}`} className={`test-case-editor ${item.status}`}>
@@ -2468,14 +4586,90 @@ function TestScopeManager({ testArtifact, scopeArtifact, onSave, onReview }) {
         <button className="btn ghost compact" type="button" onClick={addManualCase}>
           Add manual case
         </button>
-        <button className="btn primary compact" type="button" disabled={Boolean(loading)} onClick={saveScope}>
-          {loading === "save" ? "Saving..." : scopeArtifact ? "Save new scope version" : "Save testing scope"}
-        </button>
-        <button className="btn ghost compact" type="button" disabled={!scopeArtifact || reviewed || Boolean(loading)} onClick={markReviewed}>
-          {reviewed ? "Reviewed" : loading === "review" ? "Reviewing..." : "Mark scope reviewed"}
-        </button>
       </div>
     </section>
+  );
+}
+
+function TestScopeBoard({ cases, onChange }) {
+  const columns = [
+    { id: "accepted", title: "Must test", hint: "QA/UAT scope" },
+    { id: "backlog", title: "Regression / optional", hint: "Keep for later" },
+    { id: "rejected", title: "Rejected", hint: "Noise or not relevant" },
+  ];
+  return (
+    <div className="test-scope-board">
+      {columns.map((column) => {
+        const items = cases
+          .map((item, index) => ({ ...item, originalIndex: index }))
+          .filter((item) => item.status === column.id);
+        return (
+          <section key={column.id} className={`test-scope-column ${column.id}`}>
+            <div className="test-scope-column-head">
+              <div>
+                <strong>{column.title}</strong>
+                <span>{column.hint}</span>
+              </div>
+              <b>{items.length}</b>
+            </div>
+            <div className="test-scope-card-list">
+              {items.length === 0 && <p className="empty-monitor-state">No cases here.</p>}
+              {items.map((item) => (
+                <article key={`${item.id}-${item.originalIndex}`} className={`test-scope-card ${item.status}`}>
+                  <div className="test-scope-card-top">
+                    <span className="source-pill">{item.id}</span>
+                    <span className={`tag ${item.priority === "high" ? "bad" : item.priority === "medium" ? "warn" : "good"}`}>
+                      {item.priority}
+                    </span>
+                  </div>
+                  <strong>{item.input || "Untitled test case"}</strong>
+                  <p>{item.expected || "No expected result recorded."}</p>
+                  <div className="test-scope-card-controls">
+                    <select value={item.status} onChange={(event) => onChange(item.originalIndex, { status: event.target.value })}>
+                      <option value="accepted">Must test</option>
+                      <option value="backlog">Backlog</option>
+                      <option value="rejected">Reject</option>
+                    </select>
+                    <select value={item.priority} onChange={(event) => onChange(item.originalIndex, { priority: event.target.value })}>
+                      <option value="high">High</option>
+                      <option value="medium">Medium</option>
+                      <option value="low">Low</option>
+                    </select>
+                  </div>
+                  <details className="test-scope-edit-details">
+                    <summary>Edit details</summary>
+                    <label>
+                      Input / action
+                      <textarea value={item.input} onChange={(event) => onChange(item.originalIndex, { input: event.target.value })} />
+                    </label>
+                    <label>
+                      Expected result
+                      <textarea value={item.expected} onChange={(event) => onChange(item.originalIndex, { expected: event.target.value })} />
+                    </label>
+                    <label>
+                      Analyst rationale
+                      <input type="text" value={item.rationale} onChange={(event) => onChange(item.originalIndex, { rationale: event.target.value })} />
+                    </label>
+                    <small>{item.type} / {item.evidence || "no evidence"}</small>
+                  </details>
+                </article>
+              ))}
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function countManagedCases(cases) {
+  return cases.reduce(
+    (counts, item) => {
+      counts[item.status] = (counts[item.status] || 0) + 1;
+      if (item.priority === "high") counts.high += 1;
+      return counts;
+    },
+    { accepted: 0, backlog: 0, rejected: 0, high: 0 }
   );
 }
 
@@ -2553,6 +4747,147 @@ function HeaderBlock({ eyebrow, title, subtitle }) {
       <p>{subtitle}</p>
     </div>
   );
+}
+
+function EvidenceTraceabilityPanel({ title, subtitle, items }) {
+  if (!items.length) return null;
+  return (
+    <section className="evidence-trace-panel">
+      <div className="evidence-trace-head">
+        <div>
+          <span className="source-pill">Traceability</span>
+          <h3>{title}</h3>
+          <p>{subtitle}</p>
+        </div>
+        <strong>{items.length} linked item{items.length === 1 ? "" : "s"}</strong>
+      </div>
+      <div className="evidence-trace-grid">
+        {items.map((item, index) => (
+          <article key={`${item.source}-${item.type}-${index}`} className={`evidence-trace-card ${item.tone || ""}`}>
+            <div className="evidence-trace-card-top">
+              <span className="source-pill">{item.source}</span>
+              <span className="concern-category">{item.type}</span>
+            </div>
+            <strong>{item.finding}</strong>
+            {item.evidence && <p>{item.evidence}</p>}
+            {item.action && <small>{item.action}</small>}
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function buildRequirementTraceability(result) {
+  const items = [];
+  const seen = new Set();
+  const add = (item) => addTraceItem(items, seen, item);
+
+  (result.business_rules || []).slice(0, 3).forEach((rule) => add({
+    source: "Ticket text",
+    type: "Business rule",
+    finding: rule,
+    evidence: "Extracted from the submitted requirement or imported ticket fields.",
+  }));
+  (result.ambiguities || []).slice(0, 3).forEach((item) => add({
+    source: item.evidence || "Requirement text",
+    type: "Ambiguity",
+    finding: item.note,
+    action: "Confirm wording before impact analysis.",
+    tone: "warn",
+  }));
+  (result.missing_information || []).slice(0, 3).forEach((question) => add({
+    source: "AI triage",
+    type: "Missing information",
+    finding: question,
+    action: "Ask stakeholder or product owner.",
+    tone: "danger",
+  }));
+  (result.analyst_concerns || []).slice(0, 4).forEach((concern) => add({
+    source: concern.evidence || "Ticket fields",
+    type: `${formatScopeClue(concern.category || "concern")} concern`,
+    finding: concern.note || concern.question,
+    action: concern.question || "Confirm before approval.",
+    tone: concern.severity === "high" ? "danger" : concern.severity === "medium" ? "warn" : "",
+  }));
+  (result.project_risks || []).slice(0, 4).forEach((risk) => add({
+    source: risk.area || "Project risk",
+    type: risk.priority || "Risk",
+    finding: risk.reason,
+    evidence: risk.mitigation ? `Mitigation: ${risk.mitigation}` : "",
+    action: risk.owner ? `Owner: ${risk.owner}` : "Assign owner before handoff.",
+    tone: risk.severity === "high" ? "danger" : risk.severity === "medium" ? "warn" : "",
+  }));
+  (result.evidence || []).slice(0, 3).forEach((item) => add({
+    source: item.source || "Evidence",
+    type: "Source evidence",
+    finding: item.claim,
+  }));
+  (result.similar_past_changes || []).slice(0, 2).forEach((item) => add({
+    source: "Memory",
+    type: `Past change ${item.score ? `score ${item.score}` : ""}`.trim(),
+    finding: item.summary,
+    evidence: item.reviewed_at ? `Reviewed ${formatDate(item.reviewed_at)}` : "",
+  }));
+
+  return items.slice(0, 10);
+}
+
+function buildImpactTraceability(result) {
+  const items = [];
+  const seen = new Set();
+  const add = (item) => addTraceItem(items, seen, item);
+
+  (result.affected_modules || []).slice(0, 6).forEach((module) => add({
+    source: module.path || module.name || "Codebase",
+    type: "Affected module",
+    finding: module.reason || module.name,
+    evidence: module.evidence || "Matched from project context.",
+  }));
+  (result.risk_notes || []).slice(0, 4).forEach((risk) => add({
+    source: risk.evidence || "Impact analysis",
+    type: "Risk note",
+    finding: risk.note,
+    tone: "warn",
+  }));
+  (result.missing_evidence || []).slice(0, 4).forEach((missing) => add({
+    source: "Missing evidence",
+    type: "Evidence gap",
+    finding: missing,
+    action: "Check with developer, code owner, or project document.",
+    tone: "danger",
+  }));
+  (result.evidence || []).slice(0, 4).forEach((item) => add({
+    source: item.source || "Evidence",
+    type: "Source evidence",
+    finding: item.claim,
+  }));
+  (result.similar_past_changes || []).slice(0, 2).forEach((item) => add({
+    source: "Memory",
+    type: `Past change ${item.score ? `score ${item.score}` : ""}`.trim(),
+    finding: item.summary,
+    evidence: item.reviewed_at ? `Reviewed ${formatDate(item.reviewed_at)}` : "",
+  }));
+
+  return items.slice(0, 10);
+}
+
+function addTraceItem(items, seen, item) {
+  const finding = String(item.finding || "").trim();
+  if (!finding) return;
+  const source = String(item.source || "Unknown source").trim();
+  const type = String(item.type || "Finding").trim();
+  const key = `${source}|${type}|${finding}`.toLowerCase();
+  if (seen.has(key)) return;
+  seen.add(key);
+  items.push({
+    source,
+    type,
+    finding,
+    evidence: String(item.evidence || "").trim(),
+    action: String(item.action || "").trim(),
+    tone: item.tone || "",
+  });
 }
 
 function EvidenceList({ title, items, sourceKey, claimKey }) {
@@ -2818,6 +5153,13 @@ function formatDate(value) {
   } catch {
     return value;
   }
+}
+
+function indexStatusLabel(status, error) {
+  if (status === "ready") return "Indexed";
+  if (status === "indexing") return "Indexing…";
+  if (status === "failed") return `Index failed${error ? `: ${error}` : ""}`;
+  return "Not indexed";
 }
 
 createRoot(document.getElementById("root")).render(<App />);

@@ -55,6 +55,21 @@ public class RuleBasedAnswerSynthesizer implements AnswerSynthesizer {
             }
         }
 
+        Map<String, Object> projectContext = (Map<String, Object>) issueSearch.getOrDefault("project_context", Map.of());
+        List<Map<String, Object>> contextMatches = (List<Map<String, Object>>) projectContext.getOrDefault("matches", List.of());
+        if (!contextMatches.isEmpty()) {
+            answer.append("Relevant project context: ");
+            for (Map<String, Object> match : contextMatches.stream().limit(5).toList()) {
+                String name = String.valueOf(match.get("name"));
+                String file = String.valueOf(match.get("file"));
+                Object line = match.getOrDefault("line", 1);
+                String reason = String.valueOf(match.getOrDefault("reason", "matched the question"));
+                answer.append(name).append(" (").append(file).append(":").append(line).append(") - ")
+                        .append(reason).append(". ");
+                evidence.add(new Evidence(name + " project context", file + ":" + line));
+            }
+        }
+
         if (answer.isEmpty()) {
             answer.append("Nothing in the project graph or issue tracker matched this question.");
         }

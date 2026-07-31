@@ -12,13 +12,10 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -33,25 +30,21 @@ import java.util.stream.Stream;
 @Component
 public class ProjectContextMatcher {
 
-    private static final Pattern WORD = Pattern.compile("[a-zA-Z][a-zA-Z0-9_\\-]{2,}");
     private static final int MAX_FILE_BYTES = 220_000;
     private static final int MAX_MATCHES = 12;
     private static final int MAX_MEMORY_MATCHES = 6;
-    private static final Set<String> STOPWORDS = Set.of(
-            "ticket", "key", "title", "priority", "high", "medium", "low", "critical", "reporter",
-            "mbc", "fyp", "supervisor", "owner", "product",
-            "description", "acceptance", "criteria", "comments", "notes", "given", "when",
-            "then", "should", "could", "would", "must", "able", "allow", "allows", "before",
-            "after", "only", "shows", "matching", "records", "page", "update", "change",
-            "add", "remove", "filter", "filters", "select", "selects", "help", "need",
-            "confirm", "confirmed", "whether", "through", "reload", "ajax", "system", "user",
-            "the", "and", "are", "this", "that", "for", "shown", "available");
 
     private static final List<String> RELEVANT_EXTENSIONS = List.of(
             ".php", ".blade.php", ".js", ".css", ".md", ".sql", ".yml", ".yaml", ".json");
 
-    private final String targetProjectName;
-    private final Path targetProjectPath;
+    /**
+     * Not final: ProjectWorkspaceService flips these at runtime when the
+     * analyst declares/switches a project (Section: workspace onboarding),
+     * so impact-analysis follows whichever project is currently active
+     * instead of only ever reading the @Value bootstrap default below.
+     */
+    private volatile String targetProjectName;
+    private volatile Path targetProjectPath;
     private final ProjectGraphClient graphClient;
 
     @Autowired
@@ -70,6 +63,12 @@ public class ProjectContextMatcher {
         this.targetProjectName = targetProjectName;
         this.targetProjectPath = targetProjectPath;
         this.graphClient = graphClient;
+    }
+
+    /** Called by ProjectWorkspaceService whenever the analyst declares or switches the active project. */
+    public void useWorkspace(String name, Path path) {
+        this.targetProjectName = name;
+        this.targetProjectPath = path;
     }
 
     public List<Map<String, Object>> findRelevantTraces(String changeRequest) {
@@ -251,23 +250,11 @@ public class ProjectContextMatcher {
     }
 
     private static Set<String> extractTerms(String text) {
-        String normalized = splitCamelCase(text == null ? "" : text).toLowerCase(Locale.ROOT);
-        Matcher matcher = WORD.matcher(normalized);
-        Set<String> terms = new LinkedHashSet<>();
-        while (matcher.find()) {
-            String term = matcher.group().replace("-", " ").trim();
-            if (!STOPWORDS.contains(term) && term.length() >= 3) {
-                terms.add(term);
-            }
-        }
-        return terms;
+        return TextTermExtractor.extractTerms(text);
     }
 
     private static String splitCamelCase(String text) {
-        return text
-                .replaceAll("([a-z])([A-Z])", "$1 $2")
-                .replace('_', ' ')
-                .replace('-', ' ');
+        return TextTermExtractor.splitCamelCase(text);
     }
 
     private List<Map<String, Object>> fallbackDemoMatches(String changeRequest) {

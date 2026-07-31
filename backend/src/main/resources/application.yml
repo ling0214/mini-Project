@@ -1,6 +1,23 @@
 server:
   port: 8080
 
+# Persistent debug logging: written to backend/logs/backend.log (relative to
+# the working directory `mvn spring-boot:run` is started from — backend/) in
+# addition to the console, with a rolling policy so it doesn't grow unbounded.
+# Before this, debugging relied on ad-hoc `nohup ... > backend-run.N.log`
+# redirects that got overwritten/lost across restarts.
+logging:
+  file:
+    name: logs/backend.log
+  logback:
+    rollingpolicy:
+      max-file-size: 10MB
+      max-history: 10
+      total-size-cap: 100MB
+  level:
+    root: INFO
+    com.miniproject.backend: DEBUG
+
 spring:
   application:
     name: mini-project-backend
@@ -38,14 +55,27 @@ analysis:
     # rule-based keeps the demo deterministic. Set to "llm" to route
     # RequirementAnalysisSkill through LlmRequirementAnalysisSynthesizer.
     provider: ${ANALYSIS_REQUIREMENT_PROVIDER:rule-based}
+  codeqa:
+    # rule-based (default) only formats graph/issue facts into a template
+    # answer — see RuleBasedAnswerSynthesizer. Set to "llm" to route
+    # CodeQaSkill through LlmAnswerSynthesizer, which reasons over the same
+    # facts via whichever analysis.llm.provider is active below.
+    provider: ${ANALYSIS_CODEQA_PROVIDER:rule-based}
   llm:
     # rule-based/noop by default. Set to "openai" together with OPENAI_API_KEY
-    # to enable OpenAI-backed requirement analysis.
+    # for cloud-backed analysis, "local" (see local-llm.* below) to keep text
+    # on a self-hosted model for AI-restricted networks, or "claude-cli" (see
+    # claude-cli.* below) to shell out to an already-logged-in local Claude
+    # Code CLI instead of managing a separate API key at all.
     provider: ${ANALYSIS_LLM_PROVIDER:rule-based}
   target-project:
     # Current demo target. Override these when testing another project.
     name: ${ANALYSIS_TARGET_PROJECT_NAME:MyBanjirCare}
     path: ${ANALYSIS_TARGET_PROJECT_PATH:C:/tmp/MyBanjirCare}
+  graphify:
+    # Used by Project Overview -> Run Graphify index. Override if graphify is
+    # installed outside PATH, e.g. C:/Users/.../Scripts/graphify.exe.
+    command: ${GRAPHIFY_COMMAND:graphify}
 
 anthropic:
   # Not read by any code yet — no LLM-based synthesizer is wired up (see
@@ -60,6 +90,24 @@ openai:
   # never hardcoded here.
   api-key: ${OPENAI_API_KEY:}
   model: ${OPENAI_MODEL:gpt-5-mini}
+
+local-llm:
+  # No API key here by design: this targets a self-hosted OpenAI-compatible
+  # /v1/chat/completions server (Ollama, LM Studio, vLLM, llama.cpp server)
+  # on the same machine or private network — for teams whose AI policy won't
+  # allow requirement text to leave the network at all. Set
+  # analysis.llm.provider=local to activate.
+  base-url: ${LOCAL_LLM_BASE_URL:http://localhost:11434}
+  model: ${LOCAL_LLM_MODEL:llama3.1}
+  timeout-seconds: ${LOCAL_LLM_TIMEOUT_SECONDS:120}
+
+claude-cli:
+  # No API key here either — this shells out to the `claude` executable
+  # already installed and logged in on this machine (ClaudeCliAnalysisClient),
+  # same trust model as analysis.graphify.command above. Set
+  # analysis.llm.provider=claude-cli to activate.
+  command: ${CLAUDE_CLI_COMMAND:claude}
+  timeout-seconds: ${CLAUDE_CLI_TIMEOUT_SECONDS:120}
 
 integrations:
   jira:

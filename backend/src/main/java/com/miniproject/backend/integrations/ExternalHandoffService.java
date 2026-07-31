@@ -50,6 +50,7 @@ public class ExternalHandoffService {
 
         ConnectorResult connectorResult = switch (destination) {
             case "jira" -> jiraConnector.createIssue(summary, description, dryRun);
+            case "jira-comment" -> jiraConnector.commentOnIssue(request.jiraIssueKey(), description, dryRun);
             case "bitbucket" -> bitbucketConnector.commentOnPr(request.prUrl(), description, dryRun);
             default -> throw new IllegalArgumentException("Unsupported external handoff destination: " + destination);
         };
@@ -78,7 +79,7 @@ public class ExternalHandoffService {
 
     private static String requireDestination(String destination) {
         if (destination == null || destination.isBlank()) {
-            throw new IllegalArgumentException("destination is required: jira or bitbucket");
+            throw new IllegalArgumentException("destination is required: jira, jira-comment, or bitbucket");
         }
         return destination.trim().toLowerCase();
     }

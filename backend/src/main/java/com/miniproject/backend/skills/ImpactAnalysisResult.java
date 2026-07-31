@@ -1,6 +1,7 @@
 package com.miniproject.backend.skills;
 
 import com.miniproject.backend.artifact.Evidence;
+import com.miniproject.backend.memory.SimilarPastChange;
 
 import java.util.List;
 
@@ -12,7 +13,8 @@ public record ImpactAnalysisResult(
         Effort roughEffort,
         List<String> missingEvidence,
         String confidence,
-        List<Evidence> evidence) {
+        List<Evidence> evidence,
+        List<SimilarPastChange> similarPastChanges) {
 
     public record AffectedModule(String name, String path, String reason, String evidence) {
     }

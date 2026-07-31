@@ -1,9 +1,13 @@
 package com.miniproject.backend.coordinator;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.miniproject.backend.agent.AgentRegistry;
 import com.miniproject.backend.artifact.Artifact;
 import com.miniproject.backend.artifact.Evidence;
 import com.miniproject.backend.github.GitHubPrReader;
+import com.miniproject.backend.memory.MemoryCardService;
+import com.miniproject.backend.memory.SimilarPastChange;
 import com.miniproject.backend.persistence.ArtifactPersistenceService;
 import com.miniproject.backend.skills.CodeQaResult;
 import com.miniproject.backend.skills.CodeQaSkill;
@@ -48,6 +52,8 @@ public class CoordinatorService {
     private final RequirementAnalysisSkill requirementAnalysisSkill;
     private final ArtifactPersistenceService persistence;
     private final AgentRegistry agentRegistry;
+    private final ObjectMapper objectMapper;
+    private final MemoryCardService memoryCardService;
 
     public CoordinatorService(
             CodeQaSkill codeQaSkill,
@@ -57,7 +63,9 @@ public class CoordinatorService {
             TimelineEstimationSynthesizer timelineEstimationSynthesizer,
             RequirementAnalysisSkill requirementAnalysisSkill,
             ArtifactPersistenceService persistence,
-            AgentRegistry agentRegistry) {
+            AgentRegistry agentRegistry,
+            ObjectMapper objectMapper,
+            MemoryCardService memoryCardService) {
         this.codeQaSkill = codeQaSkill;
         this.impactAnalysisSkill = impactAnalysisSkill;
         this.prReader = prReader;
@@ -66,6 +74,23 @@ public class CoordinatorService {
         this.requirementAnalysisSkill = requirementAnalysisSkill;
         this.persistence = persistence;
         this.agentRegistry = agentRegistry;
+        this.objectMapper = objectMapper;
+        this.memoryCardService = memoryCardService;
+    }
+
+    private RequirementAnalysisResult withSimilarPastChanges(RequirementAnalysisResult result, String queryText) {
+        List<SimilarPastChange> similar = memoryCardService.findSimilar("requirement-analysis", queryText, null);
+        return new RequirementAnalysisResult(
+                result.businessRules(), result.businessValue(), result.scopeBoundary(), result.ambiguities(),
+                result.missingInformation(), result.assumptions(), result.analystConcerns(), result.projectRisks(),
+                result.potentialAffectedAreas(), result.confidence(), result.evidence(), similar);
+    }
+
+    private ImpactAnalysisResult withSimilarPastChanges(ImpactAnalysisResult result, String queryText) {
+        List<SimilarPastChange> similar = memoryCardService.findSimilar("impact-analysis", queryText, null);
+        return new ImpactAnalysisResult(
+                result.affectedModules(), result.riskNotes(), result.riskLevel(), result.roughEffort(),
+                result.missingEvidence(), result.confidence(), result.evidence(), similar);
     }
 
     public Artifact<CodeQaResult> codeQa(String profile, String question) {
@@ -78,7 +103,7 @@ public class CoordinatorService {
 
     public Artifact<ImpactAnalysisResult> impactAnalysis(String profile, String changeRequest) {
         requireSkillAllowed(profile, "impact-analysis");
-        ImpactAnalysisResult result = impactAnalysisSkill.run(changeRequest);
+        ImpactAnalysisResult result = withSimilarPastChanges(impactAnalysisSkill.run(changeRequest), changeRequest);
         Artifact<ImpactAnalysisResult> artifact = Artifact.draft(profile + "-agent", "impact-analysis", result, result.evidence());
         persistence.save(artifact, profile, changeRequest);
         return artifact;
@@ -98,9 +123,10 @@ public class CoordinatorService {
 
         List<Evidence> evidence = new ArrayList<>(result.evidence());
         evidence.add(new Evidence("Source PR: " + pr.title(), prUrl));
+        List<SimilarPastChange> similar = memoryCardService.findSimilar("impact-analysis", changeRequestText, null);
         ImpactAnalysisResult withPrEvidence = new ImpactAnalysisResult(
                 result.affectedModules(), result.riskNotes(), result.riskLevel(), result.roughEffort(),
-                result.missingEvidence(), result.confidence(), evidence);
+                result.missingEvidence(), result.confidence(), evidence, similar);
 
         Artifact<ImpactAnalysisResult> artifact =
                 Artifact.draft(profile + "-agent", "impact-analysis", withPrEvidence, withPrEvidence.evidence());
@@ -110,7 +136,7 @@ public class CoordinatorService {
 
     public Artifact<RequirementAnalysisResult> requirementAnalysis(String profile, String description) {
         requireSkillAllowed(profile, "requirement-analysis");
-        RequirementAnalysisResult result = requirementAnalysisSkill.run(description);
+        RequirementAnalysisResult result = withSimilarPastChanges(requirementAnalysisSkill.run(description), description);
         Artifact<RequirementAnalysisResult> artifact =
                 Artifact.draft(profile + "-agent", "requirement-analysis", result, result.evidence());
         persistence.save(artifact, profile, description);
@@ -138,12 +164,60 @@ public class CoordinatorService {
         String originalDescription = persistence.findInputText(sourceTaskId).orElse("");
         String augmentedDescription = originalDescription + "\n\nClarifications:\n" + additionalInfo;
 
-        RequirementAnalysisResult result = requirementAnalysisSkill.run(augmentedDescription);
+        RequirementAnalysisResult result =
+                withSimilarPastChanges(requirementAnalysisSkill.run(augmentedDescription), augmentedDescription);
         Artifact<RequirementAnalysisResult> artifact =
                 Artifact.draft(profile + "-agent", "requirement-analysis", result, result.evidence())
                         .withParentTaskId(sourceTaskId);
         persistence.save(artifact, profile, augmentedDescription, sourceTaskId);
         return artifact;
+    }
+
+    private static final String CLARIFICATION_MARKER = "\n\nClarifications:\n";
+
+    /**
+     * Turns the append-only clarify chain (clarifyRequirementAnalysis above)
+     * into a readable "round N: still missing X -> analyst answered Y" view.
+     * Each round's own missingInformation/ambiguities come from its persisted
+     * result; what the analyst answered to produce THAT round is recovered by
+     * splitting its inputText on the last CLARIFICATION_MARKER, since a round
+     * born from an earlier round already contains prior markers verbatim.
+     */
+    public List<ClarificationHistoryEntry> clarificationHistory(String taskId) {
+        Artifact<Object> latest = persistence.findArtifact(taskId)
+                .orElseThrow(() -> new IllegalArgumentException("No artifact found for task_id " + taskId));
+        if (!"requirement-analysis".equals(latest.skill())) {
+            throw new IllegalArgumentException(
+                    "Clarification history requires a requirement-analysis artifact, got: " + latest.skill());
+        }
+
+        return persistence.findClarificationChain(taskId).stream()
+                .map(this::toHistoryEntry)
+                .toList();
+    }
+
+    private ClarificationHistoryEntry toHistoryEntry(ArtifactPersistenceService.ChainEntry entry) {
+        RequirementAnalysisResult result = readResult(entry.resultJson());
+        return new ClarificationHistoryEntry(
+                entry.taskId(),
+                entry.createdAt().toString(),
+                entry.reviewed(),
+                result.missingInformation(),
+                result.ambiguities(),
+                clarificationAnswered(entry.inputText()));
+    }
+
+    private RequirementAnalysisResult readResult(String resultJson) {
+        try {
+            return objectMapper.readValue(resultJson, RequirementAnalysisResult.class);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Corrupt requirement-analysis result_json", e);
+        }
+    }
+
+    private static String clarificationAnswered(String inputText) {
+        int markerIndex = inputText == null ? -1 : inputText.lastIndexOf(CLARIFICATION_MARKER);
+        return markerIndex < 0 ? "" : inputText.substring(markerIndex + CLARIFICATION_MARKER.length()).trim();
     }
 
     /**
@@ -168,7 +242,7 @@ public class CoordinatorService {
 
         String requirementText = persistence.findInputText(sourceTaskId)
                 .orElseThrow(() -> new IllegalArgumentException("No input text found for artifact " + sourceTaskId));
-        ImpactAnalysisResult result = impactAnalysisSkill.run(requirementText);
+        ImpactAnalysisResult result = withSimilarPastChanges(impactAnalysisSkill.run(requirementText), requirementText);
         Artifact<ImpactAnalysisResult> artifact =
                 Artifact.draft(profile + "-agent", "impact-analysis", result, result.evidence())
                         .withParentTaskId(sourceTaskId);

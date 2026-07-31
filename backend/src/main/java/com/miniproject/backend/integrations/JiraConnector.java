@@ -199,6 +199,50 @@ public class JiraConnector {
         }
     }
 
+    public ConnectorResult commentOnIssue(String issueKey, String comment, boolean dryRun) {
+        String key = issueKey == null ? "" : issueKey.trim().toUpperCase();
+        if (key.isBlank()) {
+            throw new IllegalArgumentException("Jira issue key is required for Jira comment handoff.");
+        }
+        if (dryRun || !canReadIssues()) {
+            return new ConnectorResult(
+                    "DRY_RUN",
+                    key,
+                    baseUrl.isBlank() ? null : baseUrl + "/browse/" + key,
+                    canReadIssues()
+                            ? "Jira dry-run: reviewed artifact is ready to comment on " + key + "."
+                            : "Jira connector is not configured. Set integrations.jira.* values to enable real comment.",
+                    true);
+        }
+
+        try {
+            Map<String, Object> body = Map.of("body", adfDescription(comment));
+            HttpRequest request = HttpRequest.newBuilder(URI.create(apiBaseUrl() + "/rest/api/3/issue/" + key + "/comment"))
+                    .header("Accept", "application/json")
+                    .header("Content-Type", "application/json")
+                    .header("Authorization", authorizationHeader())
+                    .header("User-Agent", "mini-project-backend")
+                    .timeout(Duration.ofSeconds(15))
+                    .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body)))
+                    .build();
+            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200 && response.statusCode() != 201) {
+                throw new ExternalConnectorException(
+                        "Jira API returned HTTP " + response.statusCode() + ": " + response.body());
+            }
+            JsonNode parsed = json.readTree(response.body());
+            String commentId = parsed.path("id").asText("");
+            String externalKey = commentId.isBlank() ? key : key + "#comment-" + commentId;
+            String url = baseUrl.isBlank() ? parsed.path("self").asText(null) : baseUrl + "/browse/" + key;
+            return new ConnectorResult("COMMENTED", externalKey, url, "Jira comment posted from reviewed artifact.", false);
+        } catch (IOException e) {
+            throw new ExternalConnectorException("Failed to comment on Jira issue", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ExternalConnectorException("Interrupted while commenting on Jira issue", e);
+        }
+    }
+
     public boolean canReadIssues() {
         return enabled
                 && !baseUrl.isBlank()

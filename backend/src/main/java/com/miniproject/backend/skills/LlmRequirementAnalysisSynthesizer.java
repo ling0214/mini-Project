@@ -18,7 +18,8 @@ public class LlmRequirementAnalysisSynthesizer implements RequirementAnalysisSyn
 
     private static final String SYSTEM_PROMPT = """
             You are a Software Analyst assistant. Analyse a ticket or change request for business rules,
-            ambiguities, missing information, assumptions, likely affected functional areas, and analyst concerns.
+            business value, scope boundary, risks, ambiguities, missing information, assumptions,
+            likely affected functional areas, and analyst concerns.
             Pay attention to actor clarity, contradictory acceptance criteria, privacy, security, role-based access,
             performance, availability, audit/compliance, and testability risks.
             Return strict JSON only. Do not include markdown.
@@ -56,6 +57,9 @@ public class LlmRequirementAnalysisSynthesizer implements RequirementAnalysisSyn
                 %s
 
                 Analyse it like a real Software Analyst preparing a ticket for development and QA:
+                - Identify the business driver/value in plain language.
+                - Define in-scope behavior, out-of-scope boundaries, and delivery dependencies.
+                - Classify project risk/priority using Critical/High/P1/P2/P3 style triage.
                 - Check whether actor/role and expected business outcome are clear.
                 - Flag contradictions between title, description, acceptance criteria, and comments.
                 - Flag PII, location, donor/victim, payment, or sensitive-data exposure.
@@ -67,6 +71,12 @@ public class LlmRequirementAnalysisSynthesizer implements RequirementAnalysisSyn
                 Return this JSON shape exactly:
                 {
                   "business_rules": ["confirmed rules or expected behavior"],
+                  "business_value": "why this change matters to the business, users, operation, compliance, or delivery outcome",
+                  "scope_boundary": {
+                    "in_scope": ["confirmed behavior included in this change"],
+                    "out_of_scope": ["explicit or inferred boundaries not included unless separately approved"],
+                    "dependencies": ["stakeholder, developer, QA, data, process, or external dependency"]
+                  },
                   "ambiguities": [{"note": "unclear point", "evidence": "text that caused it"}],
                   "missing_information": ["information the analyst should ask for"],
                   "assumptions": ["reasonable assumptions if the team continues"],
@@ -79,6 +89,16 @@ public class LlmRequirementAnalysisSynthesizer implements RequirementAnalysisSyn
                       "question": "follow-up question or validation step"
                     }
                   ],
+                  "project_risks": [
+                    {
+                      "priority": "Critical|High|P1|P2|P3",
+                      "severity": "critical|high|medium|low",
+                      "area": "business_value|scope|stakeholder|change_control|privacy|security|role_access|performance|testing|timeline|resource|delivery",
+                      "reason": "why this risk matters",
+                      "mitigation": "what the analyst should do next",
+                      "owner": "role responsible for resolving it"
+                    }
+                  ],
                   "potential_affected_areas": ["user-facing area, module, page, API, database entity, or workflow"],
                   "confidence": "low|medium|high"
                 }
@@ -89,10 +109,13 @@ public class LlmRequirementAnalysisSynthesizer implements RequirementAnalysisSyn
         try {
             JsonNode root = objectMapper.readTree(stripCodeFence(rawJson));
             List<String> businessRules = stringList(root.path("business_rules"));
+            String businessValue = root.path("business_value").asText("").trim();
+            RequirementAnalysisResult.ScopeBoundary scopeBoundary = scopeBoundary(root.path("scope_boundary"));
             List<RequirementAnalysisResult.Ambiguity> ambiguities = ambiguityList(root.path("ambiguities"));
             List<String> missingInformation = stringList(root.path("missing_information"));
             List<String> assumptions = stringList(root.path("assumptions"));
             List<RequirementAnalysisResult.AnalystConcern> analystConcerns = analystConcernList(root.path("analyst_concerns"));
+            List<RequirementAnalysisResult.ProjectRisk> projectRisks = projectRiskList(root.path("project_risks"));
             List<String> potentialAffectedAreas = stringList(root.path("potential_affected_areas"));
             String confidence = normalizeConfidence(root.path("confidence").asText("low"));
 
@@ -103,13 +126,17 @@ public class LlmRequirementAnalysisSynthesizer implements RequirementAnalysisSyn
 
             return java.util.Optional.of(new RequirementAnalysisResult(
                     businessRules,
+                    businessValue,
+                    scopeBoundary,
                     ambiguities,
                     missingInformation,
                     assumptions,
                     analystConcerns,
+                    projectRisks,
                     potentialAffectedAreas,
                     confidence,
-                    evidence));
+                    evidence,
+                    List.of()));
         } catch (IOException e) {
             return java.util.Optional.empty();
         }
@@ -157,6 +184,13 @@ public class LlmRequirementAnalysisSynthesizer implements RequirementAnalysisSyn
         return values;
     }
 
+    private RequirementAnalysisResult.ScopeBoundary scopeBoundary(JsonNode node) {
+        return new RequirementAnalysisResult.ScopeBoundary(
+                stringList(node.path("in_scope")),
+                stringList(node.path("out_of_scope")),
+                stringList(node.path("dependencies")));
+    }
+
     private List<RequirementAnalysisResult.AnalystConcern> analystConcernList(JsonNode node) {
         List<RequirementAnalysisResult.AnalystConcern> values = new ArrayList<>();
         if (!node.isArray()) {
@@ -175,6 +209,25 @@ public class LlmRequirementAnalysisSynthesizer implements RequirementAnalysisSyn
         return values;
     }
 
+    private List<RequirementAnalysisResult.ProjectRisk> projectRiskList(JsonNode node) {
+        List<RequirementAnalysisResult.ProjectRisk> values = new ArrayList<>();
+        if (!node.isArray()) {
+            return values;
+        }
+        for (JsonNode item : node) {
+            String priority = normalizePriority(item.path("priority").asText("P3"));
+            String severity = normalizeRiskSeverity(item.path("severity").asText("low"));
+            String area = item.path("area").asText("").trim();
+            String reason = item.path("reason").asText("").trim();
+            String mitigation = item.path("mitigation").asText("").trim();
+            String owner = item.path("owner").asText("").trim();
+            if (!area.isBlank() && !reason.isBlank()) {
+                values.add(new RequirementAnalysisResult.ProjectRisk(priority, severity, area, reason, mitigation, owner));
+            }
+        }
+        return values;
+    }
+
     private String normalizeConfidence(String value) {
         String normalized = value == null ? "" : value.trim().toLowerCase();
         return switch (normalized) {
@@ -188,6 +241,22 @@ public class LlmRequirementAnalysisSynthesizer implements RequirementAnalysisSyn
         return switch (normalized) {
             case "medium", "high" -> normalized;
             default -> "low";
+        };
+    }
+
+    private String normalizeRiskSeverity(String value) {
+        String normalized = value == null ? "" : value.trim().toLowerCase();
+        return switch (normalized) {
+            case "critical", "high", "medium" -> normalized;
+            default -> "low";
+        };
+    }
+
+    private String normalizePriority(String value) {
+        String normalized = value == null ? "" : value.trim().toUpperCase();
+        return switch (normalized) {
+            case "CRITICAL", "HIGH", "P1", "P2", "P3" -> normalized;
+            default -> "P3";
         };
     }
 }

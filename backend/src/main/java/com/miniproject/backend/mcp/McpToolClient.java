@@ -68,6 +68,21 @@ public class McpToolClient implements ProjectGraphClient, AutoCloseable {
         return callTool("search_project_context", Map.of("project", project, "query", query, "limit", limit));
     }
 
+    @Override
+    public Map<String, Object> indexProject(String repoPath, String name) {
+        return callTool("index_project", Map.of("repo_path", repoPath, "name", name));
+    }
+
+    @Override
+    public Map<String, Object> projectIndexStatus(String project) {
+        return callTool("project_index_status", Map.of("project", project));
+    }
+
+    @Override
+    public Map<String, Object> getArchitecture(String project, List<String> aspects) {
+        return callTool("get_architecture", Map.<String, Object>of("project", project, "aspects", aspects));
+    }
+
     private Map<String, Object> callTool(String toolName, Map<String, Object> arguments) {
         McpSchema.CallToolResult result;
         try {
