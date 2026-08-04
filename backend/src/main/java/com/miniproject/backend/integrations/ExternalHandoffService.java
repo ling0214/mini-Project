@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.miniproject.backend.artifact.Artifact;
 import com.miniproject.backend.artifact.Evidence;
 import com.miniproject.backend.persistence.ArtifactPersistenceService;
+import com.miniproject.backend.workspace.ProjectWorkspaceService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +20,9 @@ public class ExternalHandoffService {
     private final ExternalHandoffRepository handoffRepository;
     private final JiraConnector jiraConnector;
     private final BitbucketConnector bitbucketConnector;
+    private final HermesConnector hermesConnector;
+    private final HermesStatusService hermesStatusService;
+    private final ProjectWorkspaceService projectWorkspaceService;
     private final ObjectMapper objectMapper;
 
     public ExternalHandoffService(
@@ -26,11 +30,17 @@ public class ExternalHandoffService {
             ExternalHandoffRepository handoffRepository,
             JiraConnector jiraConnector,
             BitbucketConnector bitbucketConnector,
+            HermesConnector hermesConnector,
+            HermesStatusService hermesStatusService,
+            ProjectWorkspaceService projectWorkspaceService,
             ObjectMapper objectMapper) {
         this.persistence = persistence;
         this.handoffRepository = handoffRepository;
         this.jiraConnector = jiraConnector;
         this.bitbucketConnector = bitbucketConnector;
+        this.hermesConnector = hermesConnector;
+        this.hermesStatusService = hermesStatusService;
+        this.projectWorkspaceService = projectWorkspaceService;
         this.objectMapper = objectMapper;
     }
 
@@ -52,8 +62,23 @@ public class ExternalHandoffService {
             case "jira" -> jiraConnector.createIssue(summary, description, dryRun);
             case "jira-comment" -> jiraConnector.commentOnIssue(request.jiraIssueKey(), description, dryRun);
             case "bitbucket" -> bitbucketConnector.commentOnPr(request.prUrl(), description, dryRun);
+            case "hermes" -> hermesConnector.sendTask(summary, description, dryRun);
             default -> throw new IllegalArgumentException("Unsupported external handoff destination: " + destination);
         };
+
+        if ("hermes".equals(destination) && "SENT".equals(connectorResult.status())) {
+            // Tags this task with the project that was active when it was sent,
+            // so the tracker can later scope Hermes status to the right
+            // connected project instead of mixing every project's Hermes
+            // traffic together. Uses local_path, not the display name --
+            // names are free text the analyst can rename anytime, while path
+            // is the stable value Hermes can independently agree on too.
+            // Best-effort: a workspace lookup failure here must not fail the
+            // handoff itself.
+            String activeProjectPath = projectWorkspaceService.current().map(w -> w.getLocalPath()).orElse(null);
+            hermesStatusService.recordStatus(
+                    sourceTaskId, "Sent to Hermes", "Reviewed handoff package sent to Hermes intake.", activeProjectPath, null);
+        }
 
         ExternalHandoffEntity saved = handoffRepository.save(
                 new ExternalHandoffEntity(sourceTaskId, destination, connectorResult));
@@ -79,7 +104,7 @@ public class ExternalHandoffService {
 
     private static String requireDestination(String destination) {
         if (destination == null || destination.isBlank()) {
-            throw new IllegalArgumentException("destination is required: jira, jira-comment, or bitbucket");
+            throw new IllegalArgumentException("destination is required: jira, jira-comment, bitbucket, or hermes");
         }
         return destination.trim().toLowerCase();
     }

@@ -179,6 +179,151 @@ const TARGET_PROJECT = {
 
 const QUICK_ACTION_EVENT = "analyst-workbench:quick-action";
 
+// Still dummy/prototype data (see each component's own "Dummy view" subtitle) --
+// ordered by how close each is to being wired to real data + workflow value,
+// highest first. Hermes Tracker used to be here too; it moved up to
+// Workspace once it was wired to real data.
+const ENHANCEMENT_TOOLS = [
+  ["memory-center", "Memory", "Similar past changes"],
+  ["testing-sync", "Testing Sync", "Pass/fail and Jira updates"],
+  ["evidence-gate", "Evidence Gate", "RCA readiness checklist"],
+  ["db-diagnostics", "DB Checks", "Evidence request flow"],
+];
+
+const TESTING_SYNC_COLUMNS = [
+  {
+    id: "pending",
+    title: "Pending",
+    items: [
+      {
+        key: "MBC-204",
+        title: "Aid request filtering UAT",
+        owner: "QA",
+        action: "Waiting tester execution",
+        status: "PENDING",
+      },
+    ],
+  },
+  {
+    id: "not-pass",
+    title: "Not Pass",
+    items: [
+      {
+        key: "MBC-211",
+        title: "Urgent approval notification",
+        owner: "Developer",
+        action: "AI drafts fail reason and Jira comment",
+        status: "NOT PASS",
+      },
+    ],
+  },
+  {
+    id: "pass",
+    title: "Pass",
+    items: [
+      {
+        key: "MBC-218",
+        title: "Flood report verification",
+        owner: "Analyst",
+        action: "Auto-sync pass note to Jira",
+        status: "PASS",
+      },
+    ],
+  },
+];
+
+const DB_DIAGNOSTIC_REQUESTS = [
+  {
+    id: "DBQ-104",
+    claim: "Approved aid request is not visible to donor filter.",
+    query: "Check aid_requests.status, city_id, category_id, urgency.",
+    owner: "Developer / DBA",
+    state: "Needs result",
+  },
+  {
+    id: "DBQ-105",
+    claim: "Notification may not be linked to collection center role.",
+    query: "Check users.role and notification_preferences mapping.",
+    owner: "Backend owner",
+    state: "Drafted",
+  },
+];
+
+const EVIDENCE_GATE_ITEMS = [
+  ["Requirement", "Ready", "Ticket summary and acceptance note are available."],
+  ["Code", "Ready", "Impacted controller/model/view paths found from project graph."],
+  ["Log", "Missing", "No runtime log or error timeline attached yet."],
+  ["DB", "Needed", "Potential status/config claim needs read-only query result."],
+  ["Stakeholder", "Ready", "Clarification note confirms filter behavior."],
+];
+
+/** Fixed vocabulary — must match HermesStatusService.VALID_STATUSES on the backend. */
+const HERMES_STATUS_ORDER = [
+  "Sent to Hermes",
+  "Hermes accepted",
+  "Developer update",
+  "Testing decision",
+  "Close summary",
+];
+
+const MEMORY_MATCHES = [
+  {
+    score: 82,
+    title: "Donation status filter change",
+    outcome: "Affected donor browse page, aid request model, and notification tests.",
+    reuse: "Reuse regression cases for approved/pending status visibility.",
+  },
+  {
+    score: 68,
+    title: "Collection center assignment notification",
+    outcome: "Required role-access clarification before developer handoff.",
+    reuse: "Ask stakeholder to confirm owner role before scope approval.",
+  },
+  {
+    score: 54,
+    title: "Flood report public display review",
+    outcome: "Needed verification gate and manual QA signoff.",
+    reuse: "Add negative case for unverified records.",
+  },
+];
+
+const KANBAN_COLUMN_META = [
+  { id: "todo", title: "To Do", summary: "Accepted, not yet actively worked" },
+  { id: "progress", title: "In Progress", summary: "Analysis, development, or testing active" },
+  { id: "review", title: "In Review", summary: "Waiting for handoff or sync signoff" },
+  { id: "done", title: "Done", summary: "Closed and synced" },
+];
+
+// mini-Project tickets track 6 phases with exactly one "active" cursor at a
+// time (see TicketTrackerService.buildTicketView) -- a ticket only earns a
+// kanban slot once Requirement Review is done (reviewed=true), matching the
+// same review-gate the rest of the workbench enforces before work is
+// considered "real". Impact Analysis / Development / Testing active all read
+// as "In Progress" per the agreed column mapping.
+function kanbanColumnForTicket(ticket) {
+  const phases = ticket.phases || [];
+  const byName = Object.fromEntries(phases.map((phase) => [phase.name, phase.state]));
+  if (byName["Requirement Review (ticket raised)"] !== "done") return null;
+  if (byName["Jira / UI Sync"] === "done") return "done";
+  const activeName = phases.find((phase) => phase.state === "active")?.name;
+  if (activeName === "Review / Handoff" || activeName === "Jira / UI Sync") return "review";
+  if (activeName === "Impact Analysis" || activeName === "Development / Fixing" || activeName === "Testing") {
+    return "progress";
+  }
+  return "todo";
+}
+
+// Hermes-originated incidents only earn a kanban slot once Hermes has
+// actually accepted the task -- "Sent to Hermes" alone just means the
+// package left mini-Project, not that any real work has started yet.
+function kanbanColumnForHermesTask(task) {
+  if (task.status === "Hermes accepted") return "todo";
+  if (task.status === "Developer update") return "progress";
+  if (task.status === "Testing decision") return "review";
+  if (task.status === "Close summary") return "done";
+  return null;
+}
+
 function App() {
   const [backendStatus, setBackendStatus] = useState("checking");
   const [view, setView] = useState("home");
@@ -249,6 +394,7 @@ function App() {
       />
       <AnalystWorkflow
         workspace={workspace}
+        onWorkspaceUpdated={setWorkspace}
         onViewProjectOverview={() => setView("diagram")}
         onSwitchProject={() => setView("connect-project")}
       />
@@ -268,10 +414,29 @@ function ConnectProjectScreen({ onConnected, onCancel, onActiveRemoved }) {
   const [error, setError] = useState("");
   const [removingId, setRemovingId] = useState(null);
   const [browserOpen, setBrowserOpen] = useState(false);
+  const [hermesMatchCount, setHermesMatchCount] = useState(null);
 
   useEffect(() => {
     loadProjects();
   }, []);
+
+  // Debounced: as the analyst types/browses to a path, check whether Hermes
+  // already has tracked activity under it (or an ancestor/descendant of it —
+  // see HermesStatusService.pathsRelated), so they don't have to guess which
+  // folder "unlocks" the Hermes Tracker page before ever connecting it.
+  useEffect(() => {
+    const trimmed = localPath.trim();
+    if (!trimmed) {
+      setHermesMatchCount(null);
+      return;
+    }
+    const timeout = setTimeout(() => {
+      api(`/api/hermes/status/current?project=${encodeURIComponent(trimmed)}`)
+        .then((rows) => setHermesMatchCount(rows.length))
+        .catch(() => setHermesMatchCount(null));
+    }, 400);
+    return () => clearTimeout(timeout);
+  }, [localPath]);
 
   function loadProjects() {
     api("/api/workspace")
@@ -332,120 +497,161 @@ function ConnectProjectScreen({ onConnected, onCancel, onActiveRemoved }) {
   }
 
   const activeProject = projects.find((project) => project.active);
+  const readyCount = projects.filter((project) => project.index_status === "ready" && project.graphify_index_status === "ready").length;
+  const indexingCount = projects.filter((project) => project.index_status === "indexing" || project.graphify_index_status === "indexing").length;
 
   return (
-    <main className="connect-project-shell">
-      <section className="connect-project-panel">
-        <div className="connect-project-head">
+    <main className="connect-project-shell command-center-shell">
+      <section className="connect-project-panel command-center-panel">
+        <div className="connect-project-head command-center-head">
           <span className="brand-mark">
             <LogoMark />
           </span>
           <div>
-            <strong>Connect a project</strong>
-            <span>Declare which repo impact-analysis should read before entering the workbench.</span>
+            <strong>Project Control Center</strong>
+            <span>Connect repo intelligence now; keep the workflow ready for Hermes handoff later.</span>
           </div>
         </div>
 
-        <div className={`active-project-banner ${activeProject ? "" : "none"}`}>
-          <span className="active-project-banner-dot" />
-          {activeProject ? (
-            <span>
-              Currently connected: <strong>{activeProject.name}</strong>
-              <span className="active-project-banner-path"> — {activeProject.local_path}</span>
-            </span>
-          ) : (
-            <span>No project is currently connected.</span>
-          )}
-        </div>
+        <div className="project-command-grid">
+          <section className="project-connect-card">
+            <div className={`active-project-banner ${activeProject ? "" : "none"}`}>
+              <span className="active-project-banner-dot" />
+              {activeProject ? (
+                <span>
+                  Currently connected: <strong>{activeProject.name}</strong>
+                  <span className="active-project-banner-path"> — {activeProject.local_path}</span>
+                </span>
+              ) : (
+                <span>No project is currently connected.</span>
+              )}
+            </div>
 
-        <label className="field-label">Project name</label>
-        <input type="text" value={name} onChange={(event) => setName(event.target.value)} placeholder="MyBanjirCare" />
+            <label className="field-label">Project name</label>
+            <input type="text" value={name} onChange={(event) => setName(event.target.value)} placeholder="MyBanjirCare" />
 
-        <label className="field-label">Local repo path</label>
-        <div className="path-input-row">
-          <input
-            type="text"
-            value={localPath}
-            onChange={(event) => setLocalPath(event.target.value)}
-            placeholder="C:/tmp/MyBanjirCare"
-          />
-          <button className="btn ghost compact" type="button" onClick={() => setBrowserOpen(true)}>
-            Browse…
-          </button>
-        </div>
-        {browserOpen && (
-          <FolderBrowserModal
-            initialPath={localPath}
-            onSelect={(path) => {
-              setLocalPath(path);
-              setBrowserOpen(false);
-            }}
-            onClose={() => setBrowserOpen(false)}
-          />
-        )}
+            <label className="field-label">Local repo path</label>
+            <div className="path-input-row">
+              <input
+                type="text"
+                value={localPath}
+                onChange={(event) => setLocalPath(event.target.value)}
+                placeholder="C:/tmp/MyBanjirCare"
+              />
+              <button className="btn ghost compact" type="button" onClick={() => setBrowserOpen(true)}>
+                Browse…
+              </button>
+            </div>
+            {hermesMatchCount !== null && (
+              <p className={`hermes-match-hint ${hermesMatchCount > 0 ? "found" : "none"}`}>
+                {hermesMatchCount > 0
+                  ? `This path matches ${hermesMatchCount} tracked Hermes task${hermesMatchCount === 1 ? "" : "s"} — connecting here will show its progress on the Hermes Tracker page.`
+                  : "No Hermes activity tracked under this path yet."}
+              </p>
+            )}
+            {browserOpen && (
+              <FolderBrowserModal
+                initialPath={localPath}
+                onSelect={(path) => {
+                  setLocalPath(path);
+                  setBrowserOpen(false);
+                }}
+                onClose={() => setBrowserOpen(false)}
+              />
+            )}
 
-        <label className="field-label">Repo URL (optional, for reference)</label>
-        <input
-          type="text"
-          value={repoUrl}
-          onChange={(event) => setRepoUrl(event.target.value)}
-          placeholder="https://github.com/org/repo"
-        />
+            <label className="field-label">Repo URL (optional, for reference)</label>
+            <input
+              type="text"
+              value={repoUrl}
+              onChange={(event) => setRepoUrl(event.target.value)}
+              placeholder="https://github.com/org/repo"
+            />
 
-        {error && <ErrorBox message={error} />}
-        <div className="action-row">
-          <button className="btn primary" type="button" disabled={loading} onClick={declare}>
-            {loading ? "Connecting..." : "Connect project"}
-          </button>
-          {onCancel && (
-            <button className="btn ghost" type="button" onClick={onCancel}>
-              Cancel
-            </button>
-          )}
+            {error && <ErrorBox message={error} />}
+            <div className="action-row">
+              <button className="btn primary" type="button" disabled={loading} onClick={declare}>
+                {loading ? "Connecting..." : "Connect project"}
+              </button>
+              {onCancel && (
+                <button className="btn ghost" type="button" onClick={onCancel}>
+                  Cancel
+                </button>
+              )}
+            </div>
+          </section>
+
+          <aside className="project-telemetry-panel">
+            <div className="project-telemetry-head">
+              <span className="source-pill">Overview project tracker</span>
+              <h2>Project control functions</h2>
+              <p>Import a repo, understand the project, switch the active workspace, and monitor ticket progress before the analyst handoff.</p>
+            </div>
+            <div className="project-health-grid">
+              <span><strong>{activeProject ? 1 : 0}</strong> Active project</span>
+              <span><strong>{readyCount}</strong> Ready repo</span>
+              <span><strong>{indexingCount}</strong> Indexing</span>
+              <span><strong>4</strong> Ticket status</span>
+            </div>
+            <div className="project-pipeline">
+              <span>Import repo</span>
+              <span>Overview diagram</span>
+              <span>Track phase</span>
+              <span>Kanban status</span>
+            </div>
+            <div className="project-integration-row">
+              <span>Graphify</span>
+              <span>Codebase Memory</span>
+              <span>Jira</span>
+              <span>Hermes handoff</span>
+            </div>
+          </aside>
         </div>
 
         {projects.length > 0 && (
-          <div className="connect-project-history">
-            <label className="field-label">Previously declared projects</label>
-            <ul className="simple-list">
+          <section className="project-control-switchboard">
+            <div className="project-process-board-head">
+              <div>
+                <label className="field-label">Project switchboard</label>
+                <p>Switch the active repo used by Repo AI, project overview, impact analysis, and ticket status tracking.</p>
+              </div>
+              <span>{projects.length} project{projects.length === 1 ? "" : "s"}</span>
+            </div>
+            <div className="project-switchboard-grid">
               {projects.map((project) => (
-                <li key={project.id}>
-                  <div className="connect-project-history-row">
-                    <div>
+                <article key={project.id} className={project.active ? "active" : ""}>
+                  <div>
+                    <div className="project-switchboard-title">
                       <strong>{project.name}</strong>
-                      <span>{project.local_path}</span>
-                      <span className={`index-status-tag ${project.index_status}`}>
-                        {indexStatusLabel(project.index_status, project.index_error)}
-                      </span>
+                      {project.active && <span className="tag good">Active</span>}
                     </div>
-                    <div className="connect-project-history-actions">
-                      {project.active ? (
-                        <span className="tag good">Active</span>
-                      ) : (
-                        <button
-                          className="btn ghost compact"
-                          type="button"
-                          disabled={loading}
-                          onClick={() => activate(project.id)}
-                        >
-                          Switch to this
-                        </button>
-                      )}
-                      <button
-                        className="btn ghost compact danger"
-                        type="button"
-                        disabled={removingId === project.id}
-                        onClick={() => remove(project)}
-                      >
-                        {removingId === project.id ? "Removing…" : "Remove"}
-                      </button>
-                    </div>
+                    <span>{project.local_path}</span>
+                    <small>
+                      Code graph: {indexStatusLabel(project.index_status, project.index_error)} | Diagram graph:{" "}
+                      {indexStatusLabel(project.graphify_index_status, project.graphify_index_error)}
+                    </small>
                   </div>
-                </li>
+                  <div className="project-switchboard-actions">
+                    {!project.active && (
+                      <button className="btn ghost compact" type="button" disabled={loading} onClick={() => activate(project.id)}>
+                        Switch project
+                      </button>
+                    )}
+                    <button
+                      className="btn ghost compact danger"
+                      type="button"
+                      disabled={removingId === project.id}
+                      onClick={() => remove(project)}
+                    >
+                      {removingId === project.id ? "Removing..." : "Remove"}
+                    </button>
+                  </div>
+                </article>
               ))}
-            </ul>
-          </div>
+            </div>
+          </section>
         )}
+
       </section>
     </main>
   );
@@ -531,6 +737,30 @@ function FolderBrowserModal({ initialPath, onSelect, onClose }) {
 }
 
 function HomePage({ status, onEnter }) {
+  const queueItems = [
+    {
+      source: "Jira",
+      key: "KAN-121",
+      title: "Donor filter change request",
+      state: "Pending clarification",
+      priority: "High",
+    },
+    {
+      source: "Email",
+      key: "REQ-204",
+      title: "Collection center notification",
+      state: "Ready for triage",
+      priority: "Medium",
+    },
+    {
+      source: "Meeting",
+      key: "MOM-18",
+      title: "Flood report approval flow",
+      state: "Notes captured",
+      priority: "High",
+    },
+  ];
+
   return (
     <main className="home-shell">
       <section className="home-hero">
@@ -544,27 +774,38 @@ function HomePage({ status, onEnter }) {
               <span>Software Analyst workflow assistant</span>
             </div>
           </div>
-          <span className={`connection ${status}`}>
-            <span />
-            {status === "up" ? "Backend up" : status === "down" ? "Backend down" : "Checking backend"}
-          </span>
+          <div className="home-nav-center" aria-label="Primary navigation">
+            <span>Workspace</span>
+            <span>Projects</span>
+            <span>AI</span>
+            <span>Settings</span>
+          </div>
+          <div className="home-nav-right">
+            <span className="home-breadcrumb">Workspace / Project / Dashboard</span>
+            <span className={`connection ${status}`}>
+              <span />
+              {status === "up" ? "API Healthy" : status === "down" ? "API Offline" : "Checking API"}
+            </span>
+          </div>
         </div>
 
         <div className="home-hero-grid">
           <div className="home-copy">
             <div className="eyebrow">Unified analyst operations</div>
-            <h1>One control center for requirement intake, AI analysis, and delivery handoff.</h1>
+            <h1>
+              One control center for requirement intake, <span>AI analysis</span>, and delivery handoff.
+            </h1>
             <p>
               Monitor Jira, email, meetings, and manual requests in one place, then guide each work item through
               clarification, impact analysis, testing scope, and handoff without switching between tools.
             </p>
             <div className="home-actions">
               <button className="home-primary-action" type="button" onClick={onEnter}>
-                Enter Workbench
+                Enter Workbench <span aria-hidden="true">&rarr;</span>
               </button>
               <div className="home-proof">
-                <strong>4 connected signals</strong>
-                <span>Jira, Email, Google Meet, Calendar</span>
+                <strong>12 requests monitored</strong>
+                <span>4 Jira, 6 email, 2 meeting notes</span>
               </div>
             </div>
           </div>
@@ -576,38 +817,56 @@ function HomePage({ status, onEnter }) {
             </div>
             <div className="home-signal-row">
               {["jira", "email", "meet", "calendar"].map((platform) => (
-                <span key={platform} className={`home-signal ${platform}`}>
+                <span key={platform} className={`home-signal ${platform} ${platform === "jira" ? "active" : ""}`}>
                   <PlatformLogo platform={platform} />
                 </span>
               ))}
             </div>
-            <div className="home-ticket-preview">
-              <span>Jira - KAN-1</span>
-              <strong>Allow donors to filter aid requests by city and urgency</strong>
-              <p>AI found missing clarification before impact analysis starts.</p>
+            <div className="home-live-board">
+              {queueItems.map((item, index) => (
+                <article key={item.key} className={`home-queue-card item-${index + 1}`}>
+                  <div>
+                    <span>{item.source}</span>
+                    <strong>{item.key}</strong>
+                  </div>
+                  <p>{item.title}</p>
+                  <footer>
+                    <small>{item.state}</small>
+                    <em>{item.priority}</em>
+                  </footer>
+                </article>
+              ))}
             </div>
-            <div className="home-flow-preview">
-              <span>Intake</span>
-              <span>Clarify</span>
-              <span>Impact</span>
-              <span>Testing</span>
-              <span>Handoff</span>
+            <div className="home-ai-preview">
+              <div>
+                <span>AI analysis</span>
+                <strong>Risk: Medium</strong>
+              </div>
+              <p>Missing acceptance criteria detected. Impact points to aid request filtering and notification modules.</p>
+              <small>Estimated analyst review: 6 min</small>
+            </div>
+            <div className="home-flow-preview" aria-label="Workflow steps">
+              {["Intake", "Clarify", "Impact", "Testing", "Handoff"].map((step, index) => (
+                <span key={step} className={index === 2 ? "current" : ""}>
+                  {step}
+                </span>
+              ))}
             </div>
           </div>
         </div>
 
         <div className="home-capability-row">
           <div>
-            <strong>Unified Inbox</strong>
-            <span>External platform requests become mapped analyst work items.</span>
+            <strong>Inbox</strong>
+            <span>12 requests · 4 emails · 2 Jira updates</span>
           </div>
           <div>
-            <strong>AI Skill Pipeline</strong>
-            <span>Requirement, impact, test scope, and report steps stay coordinated.</span>
+            <strong>Pipeline</strong>
+            <span>5 requirement · 2 impact · 3 testing</span>
           </div>
           <div>
-            <strong>Review Gates</strong>
-            <span>Human confirmation stays visible before handoff actions.</span>
+            <strong>Review</strong>
+            <span>2 pending · 6 ready for handoff</span>
           </div>
         </div>
       </section>
@@ -784,6 +1043,199 @@ function ArchitectureDiagramScreen({ onBack }) {
   );
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function buildArchifySequenceHtml({ workspaceName, endpoint, summary, engine, graphReady, sequenceSvg }) {
+  if (!sequenceSvg) return "";
+  const route = escapeHtml(summary?.route || "No endpoint selected");
+  const handler = escapeHtml(summary?.handler || "No handler selected");
+  const framework = escapeHtml(summary?.framework || "Unknown");
+  const analysis = escapeHtml(summary?.analysis || "Route scan");
+  const project = escapeHtml(workspaceName || "Connected project");
+  const source = escapeHtml(endpoint?.route_file || "Source not available");
+  const engineLabel = engine === "graphify" ? "Graphify Deep Flow" : "Basic Scanner";
+  const evidenceLabel = engine === "graphify" && graphReady ? "Controller dependency graph" : "Route and handler scan";
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Archify Endpoint Flow - ${route}</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #12202a;
+      --muted: #667684;
+      --line: #d9e2e8;
+      --paper: #fbfaf6;
+      --panel: #ffffff;
+      --slate: #17242d;
+      --teal: #276b67;
+      --blue: #4b6f92;
+      --amber: #d4a94c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        linear-gradient(rgba(18, 32, 42, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(18, 32, 42, 0.03) 1px, transparent 1px),
+        linear-gradient(135deg, #f7fafb 0%, #eef4f5 100%);
+      background-size: 36px 36px, 36px 36px, auto;
+      padding: 22px;
+    }
+    .shell { max-width: 1280px; margin: 0 auto; display: grid; gap: 18px; }
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 18px;
+      align-items: end;
+      padding: 20px;
+      border: 1px solid rgba(18, 32, 42, 0.12);
+      border-radius: 24px;
+      background: linear-gradient(135deg, #111c23 0%, #172b33 70%, #24343c 100%);
+      color: #f7fbfb;
+      box-shadow: 0 24px 54px rgba(20, 31, 40, 0.18);
+    }
+    .kicker {
+      width: fit-content;
+      margin-bottom: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      padding: 6px 10px;
+      color: rgba(247, 251, 251, 0.78);
+      font-size: 11px;
+      font-weight: 850;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    h1 { margin: 0; font-size: clamp(24px, 3vw, 38px); line-height: 1.08; }
+    .hero p { margin: 10px 0 0; color: rgba(247, 251, 251, 0.7); line-height: 1.55; }
+    .badge-grid { display: grid; grid-template-columns: repeat(2, minmax(120px, 1fr)); gap: 10px; }
+    .badge {
+      min-width: 130px;
+      border: 1px solid rgba(255, 255, 255, 0.13);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.075);
+      padding: 12px;
+    }
+    .badge span { display: block; color: rgba(247, 251, 251, 0.58); font-size: 10px; font-weight: 850; letter-spacing: 0.08em; text-transform: uppercase; }
+    .badge strong { display: block; margin-top: 4px; color: #ffffff; font-size: 16px; overflow-wrap: anywhere; }
+    .insight {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.92);
+      padding: 14px;
+      box-shadow: 0 12px 28px rgba(24, 43, 52, 0.07);
+    }
+    .card span { display: block; color: var(--muted); font-size: 10px; font-weight: 850; letter-spacing: 0.08em; text-transform: uppercase; }
+    .card strong { display: block; margin-top: 6px; font-size: 14px; overflow-wrap: anywhere; }
+    .canvas {
+      overflow: auto;
+      border: 1px solid rgba(18, 32, 42, 0.14);
+      border-radius: 22px;
+      background: linear-gradient(135deg, #101820, #17242d);
+      padding: 18px;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.035), 0 18px 42px rgba(18, 32, 42, 0.16);
+    }
+    .paper {
+      width: max-content;
+      min-width: 100%;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 18px;
+      background:
+        linear-gradient(rgba(18, 32, 42, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(18, 32, 42, 0.03) 1px, transparent 1px),
+        var(--paper);
+      background-size: 34px 34px, 34px 34px, auto;
+      padding: 18px;
+    }
+    svg { max-width: none; min-width: 760px; }
+    svg text, svg .messageText, svg .labelText, svg .loopText, svg .noteText {
+      fill: var(--ink) !important;
+      color: var(--ink) !important;
+      font-weight: 650 !important;
+    }
+    svg .actor, svg .actorBox, svg rect.actor {
+      fill: #eef8f7 !important;
+      stroke: var(--teal) !important;
+      stroke-width: 1.4px !important;
+    }
+    svg .messageLine0, svg .messageLine1, svg .messageLine2,
+    svg path.messageLine0, svg path.messageLine1, svg path.messageLine2 {
+      stroke: var(--teal) !important;
+      stroke-width: 1.7px !important;
+    }
+    svg .activation0, svg .activation1, svg .activation2,
+    svg rect.activation0, svg rect.activation1, svg rect.activation2 {
+      fill: #d7e8f4 !important;
+      stroke: var(--blue) !important;
+    }
+    svg .note, svg .noteBox, svg rect.note {
+      fill: #fff2cf !important;
+      stroke: var(--amber) !important;
+    }
+    .footer-note {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.88);
+      padding: 12px 14px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    @media (max-width: 900px) {
+      body { padding: 12px; }
+      .hero, .insight { grid-template-columns: 1fr; }
+      .badge-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div>
+        <div class="kicker">Archify endpoint flow</div>
+        <h1>${route}</h1>
+        <p>${project} - generated from ${escapeHtml(engineLabel)} so an analyst can inspect the request path before impact or testing work.</p>
+      </div>
+      <div class="badge-grid">
+        <div class="badge"><span>Framework</span><strong>${framework}</strong></div>
+        <div class="badge"><span>Evidence</span><strong>${escapeHtml(evidenceLabel)}</strong></div>
+      </div>
+    </section>
+    <section class="insight">
+      <div class="card"><span>Endpoint</span><strong>${route}</strong></div>
+      <div class="card"><span>Handler</span><strong>${handler}</strong></div>
+      <div class="card"><span>Analysis</span><strong>${analysis}</strong></div>
+      <div class="card"><span>Source</span><strong>${source}</strong></div>
+    </section>
+    <section class="canvas">
+      <div class="paper">${sequenceSvg}</div>
+    </section>
+    <section class="footer-note">
+      This Archify-style view is a presentation layer over the current project evidence. Use it for onboarding, review discussion, and handoff explanation; verify unclear dependencies with Repo AI or the code owner.
+    </section>
+  </main>
+</body>
+</html>`;
+}
+
 function ProjectOverviewScreen({ workspace, onWorkspaceUpdated, onBack, onSwitchProject }) {
   const [activeMap, setActiveMap] = useState("sequence");
   const [svg, setSvg] = useState("");
@@ -798,6 +1250,17 @@ function ProjectOverviewScreen({ workspace, onWorkspaceUpdated, onBack, onSwitch
   const [error, setError] = useState("");
   const [sequenceError, setSequenceError] = useState("");
   const [projectNotice, setProjectNotice] = useState("");
+  const [endpointAiOpen, setEndpointAiOpen] = useState(false);
+  const [endpointAiQuestion, setEndpointAiQuestion] = useState("");
+  const [endpointAiMessages, setEndpointAiMessages] = useState([]);
+  const [endpointAiLoading, setEndpointAiLoading] = useState(false);
+  const [endpointAiError, setEndpointAiError] = useState("");
+  const [graphifySubfolders, setGraphifySubfolders] = useState([]);
+  const [selectedGraphifySubfolder, setSelectedGraphifySubfolder] = useState("");
+  const [diagramScale, setDiagramScale] = useState(1);
+  const [diagramExpanded, setDiagramExpanded] = useState(false);
+  const [diagramCopyStatus, setDiagramCopyStatus] = useState("");
+  const [sequenceView, setSequenceView] = useState("diagram");
 
   useEffect(() => {
     let cancelled = false;
@@ -873,6 +1336,61 @@ function ProjectOverviewScreen({ workspace, onWorkspaceUpdated, onBack, onSwitch
     };
   }, [selectedEndpointId, sequenceEngine, workspace?.graphify_index_status, endpoints]);
 
+  useEffect(() => {
+    setEndpointAiMessages([]);
+    setEndpointAiQuestion("");
+    setEndpointAiError("");
+  }, [selectedEndpointId, workspace?.id]);
+
+  useEffect(() => {
+    setDiagramScale(1);
+    setDiagramCopyStatus("");
+  }, [activeMap, selectedEndpointId, sequenceEngine, sequenceView, workspace?.id]);
+
+  // Graphify can't index local_path directly when it's a repo root holding
+  // several sub-projects (e.g. frontend + backend) rather than one
+  // indexable codebase -- offer the immediate subfolders so the analyst
+  // (who knows which one is actually frontend/backend) can pick.
+  useEffect(() => {
+    if (workspace?.graphify_index_status !== "failed" || !workspace?.local_path) {
+      setGraphifySubfolders([]);
+      return;
+    }
+    let cancelled = false;
+    api(`/api/workspace/browse?path=${encodeURIComponent(workspace.local_path)}`)
+      .then((result) => {
+        if (!cancelled) setGraphifySubfolders(result.entries || []);
+      })
+      .catch(() => {
+        if (!cancelled) setGraphifySubfolders([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [workspace?.graphify_index_status, workspace?.local_path]);
+
+  async function graphifyIndexSubfolder() {
+    if (!selectedGraphifySubfolder) {
+      setProjectNotice("Pick a subfolder first.");
+      return;
+    }
+    setGraphifyIndexing(true);
+    setSequenceError("");
+    setProjectNotice("");
+    try {
+      const next = await api("/api/workspace/current/graphify-index-path", {
+        method: "POST",
+        body: { path: selectedGraphifySubfolder },
+      });
+      onWorkspaceUpdated?.(next);
+      setProjectNotice(`Graphify indexing started for ${selectedGraphifySubfolder}.`);
+    } catch (err) {
+      setProjectNotice(err.message);
+    } finally {
+      setGraphifyIndexing(false);
+    }
+  }
+
   async function reindexProject() {
     setReindexing(true);
     setError("");
@@ -908,6 +1426,204 @@ function ProjectOverviewScreen({ workspace, onWorkspaceUpdated, onBack, onSwitch
   }
 
   const selectedEndpoint = endpoints.find((item) => item.id === selectedEndpointId);
+  const endpointAiPrompts = [
+    "Explain this endpoint in simple analyst language.",
+    "What upstream and downstream areas should I check?",
+    "What risks or test scenarios should I prepare?",
+  ];
+
+  async function askEndpointAi(question = endpointAiQuestion) {
+    const normalized = question.trim();
+    if (!normalized) {
+      setEndpointAiError("Ask a question about the selected endpoint first.");
+      return;
+    }
+    const endpointContext = selectedEndpoint
+      ? [
+          `Selected endpoint: ${selectedEndpoint.method} ${selectedEndpoint.path}`,
+          `Framework: ${selectedEndpoint.framework}`,
+          `Handler: ${selectedEndpoint.controller}@${selectedEndpoint.action}`,
+          `Source file: ${selectedEndpoint.route_file}`,
+          `Diagram engine: ${sequenceEngine}`,
+        ].join("\n")
+      : "No endpoint is selected. Answer using the connected project graph only.";
+    const groundedQuestion = [
+      "You are helping a Software Analyst understand a project endpoint from the Project Overview diagram.",
+      endpointContext,
+      "Answer in simple analyst language. Focus on business purpose, likely upstream/downstream modules, impact risk, testing focus, and unknowns that need developer confirmation.",
+      `Analyst question: ${normalized}`,
+    ].join("\n\n");
+    const userMessage = { id: `endpoint-user-${Date.now()}`, role: "user", question: normalized };
+    setEndpointAiOpen(true);
+    setEndpointAiError("");
+    setEndpointAiLoading(true);
+    setEndpointAiMessages((prev) => [...prev, userMessage]);
+    try {
+      const artifact = await api("/api/skills/code-qa", {
+        method: "POST",
+        body: { profile: ANALYST_PROFILE, question: groundedQuestion },
+      });
+      setEndpointAiMessages((prev) => [
+        ...prev,
+        {
+          id: artifact.task_id || `endpoint-ai-${Date.now()}`,
+          role: "assistant",
+          question: normalized,
+          artifact,
+          result: artifact.result || {},
+        },
+      ]);
+      setEndpointAiQuestion("");
+    } catch (err) {
+      setEndpointAiError(err.message);
+    } finally {
+      setEndpointAiLoading(false);
+    }
+  }
+
+  const codeGraphReady = workspace?.index_status === "ready";
+  const graphifyReady = workspace?.graphify_index_status === "ready";
+  const endpointMethodCounts = endpoints.reduce((counts, endpoint) => {
+    const method = endpoint.method || "API";
+    counts[method] = (counts[method] || 0) + 1;
+    return counts;
+  }, {});
+  const endpointSummary = selectedEndpoint
+    ? {
+        route: `${selectedEndpoint.method} ${selectedEndpoint.path}`,
+        handler: `${selectedEndpoint.controller}@${selectedEndpoint.action}`,
+        framework: selectedEndpoint.framework,
+        analysis: sequenceEngine === "graphify" && graphifyReady ? "Deep graph" : "Route scan",
+      }
+    : {
+        route: "Select an endpoint",
+        handler: "No handler selected",
+        framework: "Unknown",
+        analysis: "Waiting",
+      };
+  const currentDiagramSvg = activeMap === "sequence" ? sequenceSvg : svg;
+  const currentDiagramClass = activeMap === "sequence" ? "sequence-canvas" : "architecture-canvas";
+  const diagramScalePercent = Math.round(diagramScale * 100);
+  const archifyHtml = useMemo(
+    () =>
+      buildArchifySequenceHtml({
+        workspaceName: workspace?.name || "Connected project",
+        endpoint: selectedEndpoint,
+        summary: endpointSummary,
+        engine: sequenceEngine,
+        graphReady: graphifyReady,
+        sequenceSvg,
+      }),
+    [workspace?.name, selectedEndpoint, endpointSummary, sequenceEngine, graphifyReady, sequenceSvg],
+  );
+
+  function zoomDiagram(delta) {
+    setDiagramScale((current) => Math.min(1.8, Math.max(0.75, Number((current + delta).toFixed(2)))));
+  }
+
+  async function copyCurrentDiagram() {
+    const isArchifyView = activeMap === "sequence" && sequenceView === "archify";
+    const contentToCopy = isArchifyView ? archifyHtml : currentDiagramSvg;
+    if (!contentToCopy) {
+      setDiagramCopyStatus("No diagram to copy");
+      return;
+    }
+    setDiagramCopyStatus("");
+    try {
+      if (!isArchifyView && navigator.clipboard && window.ClipboardItem) {
+        const blob = new Blob([currentDiagramSvg], { type: "image/svg+xml" });
+        await navigator.clipboard.write([new window.ClipboardItem({ "image/svg+xml": blob })]);
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(contentToCopy);
+      } else {
+        throw new Error("Clipboard is not available in this browser.");
+      }
+      setDiagramCopyStatus(isArchifyView ? "Copied HTML" : "Copied");
+    } catch (err) {
+      try {
+        await navigator.clipboard.writeText(contentToCopy);
+        setDiagramCopyStatus(isArchifyView ? "Copied HTML" : "Copied SVG code");
+      } catch {
+        setDiagramCopyStatus(err.message || "Copy failed");
+      }
+    }
+  }
+
+  function renderDiagram(svgMarkup, extraClass = "") {
+    return (
+      <div className={`diagram-canvas ${extraClass} diagram-zoomable`}>
+        <div
+          className="diagram-zoom-stage"
+          style={{ "--diagram-scale": diagramScale }}
+          dangerouslySetInnerHTML={{ __html: svgMarkup }}
+        />
+      </div>
+    );
+  }
+
+  function renderArchifyView() {
+    return (
+      <div className="archify-view-shell">
+        <div className="archify-view-head">
+          <div>
+            <span className="source-pill">Archify View</span>
+            <strong>Presentation-ready endpoint flow</strong>
+            <p>Uses the current Scanner / Graphify sequence output, wrapped as a self-contained Archify-style HTML view.</p>
+          </div>
+          <button className="btn ghost compact" type="button" onClick={copyCurrentDiagram} disabled={!archifyHtml}>
+            Copy HTML
+          </button>
+        </div>
+        <iframe title="Archify endpoint flow" className="archify-preview-frame" srcDoc={archifyHtml} />
+      </div>
+    );
+  }
+
+  const understandingSteps = [
+    {
+      step: "1",
+      title: "Repo",
+      detail: workspace?.local_path || "Connect a local repo so the platform can read project evidence.",
+      state: codeGraphReady ? "Ready" : "Needs index",
+    },
+    {
+      step: "2",
+      title: "Endpoint",
+      detail: endpoints.length > 0 ? `${endpoints.length} endpoint or frontend API flow(s) found.` : "No endpoint flow found yet.",
+      state: endpoints.length > 0 ? "Mapped" : "Needs scan",
+    },
+    {
+      step: "3",
+      title: "Flow",
+      detail: selectedEndpoint
+        ? `${selectedEndpoint.method} ${selectedEndpoint.path} -> ${selectedEndpoint.controller}`
+        : "Select an endpoint to see the request, controller, dependencies, and response.",
+      state: selectedEndpoint ? "Selected" : "Waiting",
+    },
+    {
+      step: "4",
+      title: "Verify",
+      detail: "Use the diagram as evidence, then ask Repo AI or the code owner when the flow is incomplete.",
+      state: "Human review",
+    },
+  ];
+  const understandingTools = [
+    {
+      name: "Codebase Memory MCP",
+      status: codeGraphReady ? "Ready" : "Index needed",
+      detail: "Architecture map, impact context, and Repo AI grounding.",
+    },
+    {
+      name: "Basic Scanner",
+      status: endpoints.length > 0 ? "Ready" : "No routes",
+      detail: "Extracts Laravel/Spring routes and frontend api() calls.",
+    },
+    {
+      name: "Graphify Deep Flow",
+      status: graphifyReady ? "Ready" : "Optional",
+      detail: "Adds controller dependency flow when the graphify index exists.",
+    },
+  ];
 
   return (
     <main className="diagram-screen project-overview-screen">
@@ -948,10 +1664,6 @@ function ProjectOverviewScreen({ workspace, onWorkspaceUpdated, onBack, onSwitch
             Graphify: {indexStatusLabel(workspace?.graphify_index_status, workspace?.graphify_index_error)}
           </span>
         </div>
-        <div className="project-overview-help">
-          <strong>New analyst can use this page to:</strong>
-          <span>Understand modules, affected areas, and endpoint flow before reviewing tickets.</span>
-        </div>
         <div className="project-overview-header-actions">
           <button className="btn ghost compact" type="button" disabled={reindexing} onClick={reindexProject}>
             {reindexing ? "Indexing..." : "Re-index project"}
@@ -969,8 +1681,116 @@ function ProjectOverviewScreen({ workspace, onWorkspaceUpdated, onBack, onSwitch
                 : "Run Graphify index"}
           </button>
         </div>
+        {workspace?.graphify_index_status === "failed" && graphifySubfolders.length > 0 && (
+          <div className="graphify-subfolder-picker">
+            <p className="muted-note">
+              {workspace.name} isn't a single indexable codebase (it holds sub-projects). Pick which one to index for
+              the diagram:
+            </p>
+            <div className="path-input-row">
+              <select value={selectedGraphifySubfolder} onChange={(event) => setSelectedGraphifySubfolder(event.target.value)}>
+                <option value="">Select a subfolder…</option>
+                {graphifySubfolders.map((entry) => (
+                  <option key={entry.path} value={entry.path}>
+                    {entry.name}
+                    {entry.git_repo ? " (git repo)" : ""}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="btn primary compact"
+                type="button"
+                disabled={graphifyIndexing || !selectedGraphifySubfolder}
+                onClick={graphifyIndexSubfolder}
+              >
+                Index this folder
+              </button>
+            </div>
+          </div>
+        )}
       </section>
       {projectNotice && <div className="project-overview-notice info-box">{projectNotice}</div>}
+      <section className="project-understanding-center">
+        <div className="understanding-center-head">
+          <div>
+            <span className="source-pill">Project Understanding Center</span>
+            <h3>Repo onboarding flow</h3>
+            <p>
+              Start with the connected repo, choose an endpoint, read the flow, then use AI to confirm business and
+              testing questions before ticket analysis.
+            </p>
+          </div>
+          <div className="understanding-health">
+            <span>
+              <strong>{endpoints.length}</strong>
+              Flows found
+            </span>
+            <span>
+              <strong>{codeGraphReady ? "Ready" : "Setup"}</strong>
+              Repo graph
+            </span>
+            <span>
+              <strong>{graphifyReady ? "Ready" : "Optional"}</strong>
+              Deep flow
+            </span>
+          </div>
+        </div>
+        <div className="overview-flow-rail" role="list" aria-label="Repo onboarding flow">
+          {understandingSteps.map((item, index) => (
+            <div
+              key={item.step}
+              className={`overview-flow-step ${index === understandingSteps.length - 1 ? "last" : ""}`}
+              role="listitem"
+              title={item.detail}
+            >
+              <span className="overview-flow-marker">{item.step}</span>
+              <div className="overview-flow-copy">
+                <strong>{item.title}</strong>
+                <small>{item.state}</small>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="overview-disclosure-row">
+          <details className="overview-detail-card">
+            <summary>
+              <span>Evidence pipeline</span>
+              <strong>Codebase Memory, scanner, and Graphify status</strong>
+            </summary>
+            <div className="understanding-tool-grid">
+              {understandingTools.map((tool) => (
+                <article key={tool.name}>
+                  <div>
+                    <strong>{tool.name}</strong>
+                    <span>{tool.status}</span>
+                  </div>
+                  <p>{tool.detail}</p>
+                </article>
+              ))}
+            </div>
+          </details>
+          <details className="overview-detail-card">
+            <summary>
+              <span>Ask AI</span>
+              <strong>Suggested questions for this endpoint</strong>
+            </summary>
+            <div className="understanding-question-strip">
+              <button type="button" onClick={() => askEndpointAi("Which endpoint starts this flow?")}>
+                Which endpoint starts this flow?
+              </button>
+              <button type="button" onClick={() => askEndpointAi("What models or tables are affected?")}>
+                What models are affected?
+              </button>
+              <button type="button" onClick={() => askEndpointAi("Explain this controller in simple analyst language.")}>
+                Explain this controller
+              </button>
+              <button type="button" onClick={() => askEndpointAi("What tests should be prepared for this endpoint?")}>
+                Generate test focus
+              </button>
+            </div>
+          </details>
+        </div>
+      </section>
       <section className="project-overview-grid">
         <section className="project-map-panel">
           <div className="project-map-head">
@@ -978,43 +1798,47 @@ function ProjectOverviewScreen({ workspace, onWorkspaceUpdated, onBack, onSwitch
               <span className="source-pill">{activeMap === "sequence" ? "Endpoint flow" : "System map"}</span>
               <h3>{activeMap === "sequence" ? "Endpoint sequence diagram" : "Architecture diagram"}</h3>
             </div>
-            <span className="muted-note">
-              {activeMap === "sequence"
-                ? selectedEndpoint?.framework === "frontend"
-                  ? "Generated from frontend api() calls and mapped backend API URLs"
-                  : sequenceEngine === "graphify"
-                  ? "Generated from Laravel routes plus Graphify extracted graph"
-                  : "Generated from Laravel/Spring routes, controllers, and frontend API calls"
-                : "Generated by codebase-memory MCP"}
-            </span>
-          </div>
-          <div className="diagram-mode-tabs">
-            <button className={activeMap === "sequence" ? "active" : ""} type="button" onClick={() => setActiveMap("sequence")}>
-              Endpoint Sequence
-            </button>
-            {/* <button className={activeMap === "architecture" ? "active" : ""} type="button" onClick={() => setActiveMap("architecture")}>
-              Architecture Map
-            </button> */}
-          </div>
-          {activeMap === "sequence" && (
-            <>
-              <div className="diagram-engine-tabs">
-                <button
-                  className={sequenceEngine === "scanner" ? "active" : ""}
-                  type="button"
-                  onClick={() => setSequenceEngine("scanner")}
-                >
-                  Basic Scanner
+            <div className="project-map-head-actions">
+              <span className="muted-note diagram-source-note">
+                {activeMap === "sequence"
+                  ? selectedEndpoint?.framework === "frontend"
+                    ? "Generated from frontend api() calls and mapped backend API URLs"
+                    : sequenceEngine === "graphify"
+                    ? "Generated from  routes plus Graphify extracted graph"
+                    : "Generated from  routes, controllers, and frontend API calls"
+                  : "Generated by codebase-memory MCP"}
+              </span>
+              <button
+                className={`diagram-ai-launcher ${endpointAiOpen ? "active" : ""}`}
+                type="button"
+                onClick={() => setEndpointAiOpen((open) => !open)}>
+                <span>AI</span>
+                <strong>{endpointAiOpen ? "Hide assistant" : "Ask endpoint AI"}</strong>
+              </button>
+              <div className="diagram-view-actions" aria-label="Diagram viewing tools">
+                <button type="button" onClick={() => zoomDiagram(-0.15)} disabled={!currentDiagramSvg || diagramScale <= 0.75}>
+                  -
                 </button>
-                <button
-                  className={sequenceEngine === "graphify" ? "active" : ""}
-                  type="button"
-                  onClick={() => setSequenceEngine("graphify")}
-                >
-                  Graphify Deep Flow
+                <span>{diagramScalePercent}%</span>
+                <button type="button" onClick={() => zoomDiagram(0.15)} disabled={!currentDiagramSvg || diagramScale >= 1.8}>
+                  +
+                </button>
+                <button type="button" onClick={() => setDiagramScale(1)} disabled={!currentDiagramSvg || diagramScale === 1}>
+                  Reset
+                </button>
+                <button type="button" onClick={() => setDiagramExpanded(true)} disabled={!currentDiagramSvg}>
+                  Expand
+                </button>
+                <button type="button" onClick={copyCurrentDiagram} disabled={!currentDiagramSvg}>
+                  Copy diagram
                 </button>
               </div>
-              <div className="endpoint-picker">
+              {diagramCopyStatus && <span className="diagram-copy-status">{diagramCopyStatus}</span>}
+            </div>
+          </div>
+          {activeMap === "sequence" && (
+            <div className="overview-toolbar">
+              <div className="overview-toolbar-endpoint">
                 <label className="field-label" htmlFor="endpoint-select">
                   Select endpoint
                 </label>
@@ -1029,15 +1853,79 @@ function ProjectOverviewScreen({ workspace, onWorkspaceUpdated, onBack, onSwitch
                     </option>
                   ))}
                 </select>
-                {selectedEndpoint && (
-                  <p className="muted-note">
-                    Source: <code>{selectedEndpoint.route_file}</code>
-                    {sequenceEngine === "graphify" &&
-                      selectedEndpoint.framework !== "frontend" &&
-                      " · Uses graphify-out/graph.json for controller dependencies"}
-                  </p>
-                )}
+                <div className="endpoint-method-filter" aria-label="Endpoint method summary">
+                  {["GET", "POST", "PUT", "PATCH", "DELETE"].map((method) => (
+                    <span key={method} className={endpointMethodCounts[method] ? "active" : ""}>
+                      {method} {endpointMethodCounts[method] || 0}
+                    </span>
+                  ))}
+                </div>
               </div>
+              <div className="overview-toolbar-segments">
+                <div className="overview-segment-group" aria-label="Diagram data source">
+                  <button
+                    className={sequenceEngine === "scanner" ? "active" : ""}
+                    type="button"
+                    onClick={() => setSequenceEngine("scanner")}
+                  >
+                    Basic Scanner
+                  </button>
+                  <button
+                    className={sequenceEngine === "graphify" ? "active" : ""}
+                    type="button"
+                    onClick={() => setSequenceEngine("graphify")}
+                  >
+                    Graphify Deep Flow
+                  </button>
+                </div>
+                <div className="overview-segment-group" aria-label="Sequence diagram renderer">
+                  <button
+                    className={sequenceView === "diagram" ? "active" : ""}
+                    type="button"
+                    onClick={() => setSequenceView("diagram")}
+                  >
+                    Mermaid Diagram
+                  </button>
+                  <button
+                    className={sequenceView === "archify" ? "active" : ""}
+                    type="button"
+                    onClick={() => setSequenceView("archify")}
+                  >
+                    Archify View
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          <div className="overview-summary-chips">
+            <span>
+              <b>Endpoint</b>
+              {endpointSummary.route}
+            </span>
+            <span>
+              <b>Handler</b>
+              {endpointSummary.handler}
+            </span>
+            <span>
+              <b>Framework</b>
+              {endpointSummary.framework}
+            </span>
+            <span>
+              <b>Analysis</b>
+              {endpointSummary.analysis}
+            </span>
+            {activeMap === "sequence" && selectedEndpoint && (
+              <span className="overview-summary-source">
+                <b>Source</b>
+                <code>{selectedEndpoint.route_file}</code>
+                {sequenceEngine === "graphify" &&
+                  selectedEndpoint.framework !== "frontend" &&
+                  " · graphify-out/graph.json"}
+              </span>
+            )}
+          </div>
+          {activeMap === "sequence" && (
+            <>
               {sequenceEngine === "graphify" &&
                 selectedEndpoint?.framework !== "frontend" &&
                 workspace?.graphify_index_status !== "ready" && (
@@ -1045,11 +1933,84 @@ function ProjectOverviewScreen({ workspace, onWorkspaceUpdated, onBack, onSwitch
                   Run Graphify index first to generate evidence-based controller dependency flow.
                 </div>
               )}
+              {endpointAiOpen && (
+                <aside className="diagram-ai-panel">
+                  <div className="diagram-ai-head">
+                    <div className="diagram-ai-mark">AI</div>
+                    <div>
+                      <span>Diagram Copilot</span>
+                      <strong>Ask about this endpoint</strong>
+                    </div>
+                    <button type="button" onClick={() => setEndpointAiOpen(false)} aria-label="Close endpoint assistant">
+                      x
+                    </button>
+                  </div>
+                  <div className="diagram-ai-context">
+                    <div>
+                      <span>{selectedEndpoint ? `${selectedEndpoint.method} ${selectedEndpoint.path}` : "No endpoint selected"}</span>
+                      <strong>{selectedEndpoint ? `${selectedEndpoint.controller}@${selectedEndpoint.action}` : "Select a flow first"}</strong>
+                    </div>
+                    <small>{sequenceEngine === "graphify" ? "Graphify deep flow" : "Basic route scanner"}</small>
+                  </div>
+                  <div className="diagram-ai-prompts">
+                    {endpointAiPrompts.map((prompt) => (
+                      <button key={prompt} type="button" onClick={() => askEndpointAi(prompt)} disabled={endpointAiLoading}>
+                        {prompt}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="diagram-ai-thread">
+                    {endpointAiMessages.length === 0 ? (
+                      <div className="diagram-ai-empty">
+                        <strong>Use this when the diagram is not enough.</strong>
+                        <span>Ask what this endpoint does, what depends on it, or what the analyst should verify.</span>
+                      </div>
+                    ) : (
+                      endpointAiMessages.map((message) =>
+                        message.role === "user" ? (
+                          <div key={message.id} className="diagram-ai-message user">
+                            {message.question}
+                          </div>
+                        ) : (
+                          <div key={message.id} className="diagram-ai-message assistant">
+                            <strong>AI explanation</strong>
+                            <p>{message.result.answer || "(no answer)"}</p>
+                            {(message.result.evidence || []).length > 0 && (
+                              <div className="diagram-ai-evidence">
+                                {(message.result.evidence || []).slice(0, 4).map((item, index) => (
+                                  <span key={`${message.id}-evidence-${index}`}>
+                                    {item.source || item.claim || "Evidence"}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            {(message.result.ungrounded || []).length > 0 && (
+                              <div className="diagram-ai-warning">Some claims were not grounded in the project graph.</div>
+                            )}
+                          </div>
+                        )
+                      )
+                    )}
+                    {endpointAiLoading && <div className="diagram-ai-message assistant loading">Reading endpoint evidence...</div>}
+                  </div>
+                  {endpointAiError && <ErrorBox message={endpointAiError} />}
+                  <div className="diagram-ai-input">
+                    <textarea
+                      value={endpointAiQuestion}
+                      onChange={(event) => setEndpointAiQuestion(event.target.value)}
+                      placeholder="Ask what this endpoint does, what depends on it, or what to test."
+                    />
+                    <button className="btn primary compact" type="button" onClick={() => askEndpointAi()} disabled={endpointAiLoading}>
+                      Ask AI
+                    </button>
+                  </div>
+                </aside>
+              )}
               {endpoints.length === 0 && <ErrorBox message="No supported backend routes or frontend API calls found for this project." />}
               {sequenceLoading && <p className="muted-note">Generating endpoint sequence...</p>}
               {sequenceError && <ErrorBox message={sequenceError} />}
               {!sequenceLoading && !sequenceError && sequenceSvg && (
-                <div className="diagram-canvas sequence-canvas" dangerouslySetInnerHTML={{ __html: sequenceSvg }} />
+                sequenceView === "archify" ? renderArchifyView() : renderDiagram(sequenceSvg, "sequence-canvas")
               )}
             </>
           )}
@@ -1057,11 +2018,42 @@ function ProjectOverviewScreen({ workspace, onWorkspaceUpdated, onBack, onSwitch
             <>
               {loading && <p className="muted-note">Generating diagram...</p>}
               {error && <ErrorBox message={error} />}
-              {!loading && !error && svg && <div className="diagram-canvas" dangerouslySetInnerHTML={{ __html: svg }} />}
+              {!loading && !error && svg && renderDiagram(svg, "architecture-canvas")}
             </>
           )}
         </section>
       </section>
+      {diagramExpanded && currentDiagramSvg && (
+        <div className="diagram-expanded-backdrop" role="dialog" aria-modal="true" aria-label="Expanded diagram viewer">
+          <div className="diagram-expanded-modal">
+            <div className="diagram-expanded-head">
+              <div>
+                <span className="source-pill">{activeMap === "sequence" ? "Endpoint flow" : "System map"}</span>
+                <strong>{activeMap === "sequence" ? endpointSummary.route : "Architecture diagram"}</strong>
+              </div>
+              <div className="diagram-view-actions">
+                <button type="button" onClick={() => zoomDiagram(-0.15)} disabled={diagramScale <= 0.75}>
+                  -
+                </button>
+                <span>{diagramScalePercent}%</span>
+                <button type="button" onClick={() => zoomDiagram(0.15)} disabled={diagramScale >= 1.8}>
+                  +
+                </button>
+                <button type="button" onClick={() => setDiagramScale(1)}>
+                  Reset
+                </button>
+                <button type="button" onClick={copyCurrentDiagram}>
+                  Copy diagram
+                </button>
+                <button type="button" onClick={() => setDiagramExpanded(false)}>
+                  Close
+                </button>
+              </div>
+            </div>
+            {renderDiagram(currentDiagramSvg, `${currentDiagramClass} diagram-expanded-canvas`)}
+          </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -1183,7 +2175,7 @@ const WORKFLOW_STEPS = [
   ["report", "Handoff Summary"],
 ];
 
-function AnalystWorkflow({ workspace, onViewProjectOverview, onSwitchProject }) {
+function AnalystWorkflow({ workspace, onWorkspaceUpdated, onViewProjectOverview, onSwitchProject }) {
   const [phase, setPhase] = useState("inbox");
   const [inboxView, setInboxView] = useState("chat");
   const [ticket, setTicket] = useState(EMPTY_TICKET);
@@ -1370,8 +2362,10 @@ function AnalystWorkflow({ workspace, onViewProjectOverview, onSwitchProject }) 
         onGoInbox={() => setPhase("inbox")}
         onManual={() => selectInboxTicket({ ...EMPTY_TICKET, receivedAt: "Manual draft" })}
         workspace={workspace}
+        onWorkspaceUpdated={onWorkspaceUpdated}
         onViewProjectOverview={onViewProjectOverview}
         onSwitchProject={onSwitchProject}
+        onOpenPrototype={setPhase}
       />
       <main className="workspace">
         {phase === "inbox" && (
@@ -1435,6 +2429,13 @@ function AnalystWorkflow({ workspace, onViewProjectOverview, onSwitchProject }) 
             onRestart={reset}
           />
         )}
+        {phase === "testing-sync" && <TestingSyncPrototype workspace={workspace} />}
+        {phase === "project-tracker" && <ProjectTrackerPage workspace={workspace} onWorkspaceUpdated={onWorkspaceUpdated} onSwitchProject={onSwitchProject} />}
+        {phase === "ticket-kanban" && <TicketKanbanPage workspace={workspace} />}
+        {phase === "db-diagnostics" && <DbDiagnosticsPrototype workspace={workspace} />}
+        {phase === "evidence-gate" && <EvidenceGatePrototype workspace={workspace} />}
+        {phase === "hermes-tracker" && <HermesTrackerPrototype workspace={workspace} />}
+        {phase === "memory-center" && <MemoryCenterPrototype workspace={workspace} />}
       </main>
     </>
   );
@@ -1452,8 +2453,10 @@ function AnalystWorkflowRail({
   onGoInbox,
   onManual,
   workspace,
+  onWorkspaceUpdated,
   onViewProjectOverview,
   onSwitchProject,
+  onOpenPrototype,
 }) {
   const order = WORKFLOW_STEPS.map(([id]) => id);
   const currentIndex = order.indexOf(phase);
@@ -1474,7 +2477,7 @@ function AnalystWorkflowRail({
           <span>{workspace?.index_status === "indexing" ? "Indexing project..." : workspace?.index_status === "ready" ? "Ready for analysis" : "Project setup"}</span>
           <div className="rail-project-actions">
             <button className="btn ghost compact" type="button" onClick={onViewProjectOverview}>
-              Project Overview
+              Project Overview Diagram
             </button>
             <button className="btn ghost compact" type="button" onClick={onSwitchProject}>
               Switch
@@ -1485,6 +2488,23 @@ function AnalystWorkflowRail({
       <div className="rail-section rail-workspace-nav-section">
         <div className="rail-label">Workspace</div>
         <div className="rail-nav">
+          {/* Ordered by where an analyst actually spends time day to day:
+              bring work in -> understand the repo -> monitor progress
+              (two views) -> check what's happened downstream at Hermes ->
+              one-time setup last. Hermes Tracker moved here from
+              Enhancement Lab now that it's wired to real data
+              (GET /api/hermes/status/current), not the earlier dummy view. */}
+          <button
+            className={phase === "inbox" && (inboxView === "jira" || inboxView === "manual") ? "active intake-nav-item" : "intake-nav-item"}
+            type="button"
+            onClick={() => {
+              onGoInbox();
+              onInboxViewChange("jira");
+            }}
+          >
+            <span>Ticket Intake</span>
+            <small>Import Jira or draft manually</small>
+          </button>
           <button
             className={phase === "inbox" && inboxView === "chat" ? "active" : ""}
             type="button"
@@ -1493,41 +2513,32 @@ function AnalystWorkflowRail({
               onInboxViewChange("chat");
             }}
           >
-            <span>Repo AI Chat</span>
+            <span>Chat</span>
             <small>Ask the current repo</small>
           </button>
           <button
-            className={phase === "inbox" && inboxView === "queue" ? "active" : ""}
+            className={phase === "project-tracker" ? "active" : ""}
             type="button"
-            onClick={() => {
-              onGoInbox();
-              onInboxViewChange("queue");
-            }}
+            onClick={() => onOpenPrototype("project-tracker")}
           >
-            <span>Work Queue</span>
-            <small>Select ticket</small>
+            <span>Project Tracker</span>
+            <small>Monitor project phase</small>
           </button>
           <button
-            className={phase === "inbox" && inboxView === "jira" ? "active" : ""}
+            className={phase === "ticket-kanban" ? "active" : ""}
             type="button"
-            onClick={() => {
-              onGoInbox();
-              onInboxViewChange("jira");
-            }}
+            onClick={() => onOpenPrototype("ticket-kanban")}
           >
-            <span>Import Jira</span>
-            <small>Fetch ticket</small>
+            <span>Kanban Ticket Status</span>
+            <small>Track ticket status</small>
           </button>
           <button
-            className={phase === "inbox" && inboxView === "manual" ? "active" : ""}
+            className={phase === "hermes-tracker" ? "active" : ""}
             type="button"
-            onClick={() => {
-              onGoInbox();
-              onInboxViewChange("manual");
-            }}
+            onClick={() => onOpenPrototype("hermes-tracker")}
           >
-            <span>Manual Intake</span>
-            <small>Draft request</small>
+            <span>Hermes Tracker</span>
+            <small>Follow handoff status</small>
           </button>
           <button
             className={phase === "inbox" && inboxView === "apps" ? "active" : ""}
@@ -1540,6 +2551,22 @@ function AnalystWorkflowRail({
             <span>Connect Apps</span>
             <small>Jira, email, calendar</small>
           </button>
+        </div>
+      </div>
+      <div className="rail-section rail-workspace-nav-section">
+        <div className="rail-label">Enhancement Lab</div>
+        <div className="rail-nav compact">
+          {ENHANCEMENT_TOOLS.map(([id, label, caption]) => (
+            <button
+              key={id}
+              className={phase === id ? "active" : ""}
+              type="button"
+              onClick={() => onOpenPrototype(id)}
+            >
+              <span>{label}</span>
+              <small>{caption}</small>
+            </button>
+          ))}
         </div>
       </div>
       <div className="rail-current-card">
@@ -1810,6 +2837,54 @@ const PLATFORM_STATUS = [
   { id: "zoom", label: "Zoom", google: false, detail: "Meeting notes after OAuth setup", metric: "offline", isNew: false },
   { id: "meet", label: "Google Meet", google: true, detail: "Meet links from Calendar events", metric: "auto-log", isNew: false },
   { id: "calendar", label: "Calendar", google: true, detail: "Upcoming requirement sessions", metric: "2 invites", isNew: true },
+];
+
+const CONNECTOR_SETTINGS = [
+  {
+    id: "jira",
+    label: "Jira",
+    group: "Ticket system",
+    status: "Connected",
+    mode: "Read + write",
+    fields: ["Site URL", "Project key", "Issue type", "API token"],
+    purpose: "Import analyst tickets, create follow-up issues, and post reviewed handoff comments.",
+  },
+  {
+    id: "github",
+    label: "GitHub",
+    group: "Code host",
+    status: "Read-only",
+    mode: "PR / repo context",
+    fields: ["Repository URL", "Access token optional", "Allowed branches"],
+    purpose: "Read PR details or restricted repo snippets for impact analysis without requiring write access.",
+  },
+  {
+    id: "bitbucket",
+    label: "Bitbucket",
+    group: "Code host",
+    status: "Configured by env",
+    mode: "PR comment",
+    fields: ["Workspace", "Repository", "Username", "App password"],
+    purpose: "Post reviewed analyst handoff notes back to a pull request after approval.",
+  },
+  {
+    id: "hermes",
+    label: "Hermes",
+    group: "Agent bridge",
+    status: "Bridge ready",
+    mode: "Discord / email intake",
+    fields: ["Discord webhook", "Target label", "Callback status URL"],
+    purpose: "Send reviewed analyst packages to Hermes and receive developer/testing progress updates.",
+  },
+  {
+    id: "google",
+    label: "Google Workspace",
+    group: "Mailbox + calendar",
+    status: "OAuth",
+    mode: "Gmail + Calendar",
+    fields: ["OAuth client", "Gmail scope", "Calendar scope"],
+    purpose: "Monitor requirement emails, meeting notes, and calendar signals in one analyst inbox.",
+  },
 ];
 
 function PlatformStatusStrip() {
@@ -2425,6 +3500,7 @@ function RepoAssistantWorkspace({
     return (
       <section className="focused-page-card">
         <PlatformStatusStrip />
+        <ConnectorSettingsCenter googleConnected={googleConnected} />
         <div className="connector-source-grid">
           {googleConnected && (
             <EmailTriagePanel
@@ -2460,7 +3536,7 @@ function RepoAssistantWorkspace({
       <section className="repo-chat-panel">
         <div className="repo-chat-head">
           <div>
-            <span className="source-pill">Repo AI</span>
+            {/* <span className="source-pill">Repo AI</span> */}
             <h2>Ask about the current project</h2>
             <p>
               Ask before opening a ticket. Answers are grounded through the existing Code Q&A skill and project graph
@@ -2535,6 +3611,93 @@ function RepoAssistantWorkspace({
       </section>
 
     </div>
+  );
+}
+
+function ConnectorSettingsCenter({ googleConnected }) {
+  const connectedCount = CONNECTOR_SETTINGS.filter((connector) =>
+    connector.id === "google" ? googleConnected : ["jira", "github", "bitbucket", "hermes"].includes(connector.id)
+  ).length;
+
+  return (
+    <section className="connector-settings-center">
+      <div className="connector-settings-head">
+        <div>
+          <span className="source-pill">Connector settings</span>
+          <h2>External platform setup</h2>
+          <p>
+            Configure the systems that feed tickets, repo evidence, PR comments, and Hermes handoff updates into the
+            analyst workbench.
+          </p>
+        </div>
+        <div className="connector-settings-metrics">
+          <span>
+            <strong>{connectedCount}</strong>
+            Ready
+          </span>
+          <span>
+            <strong>2</strong>
+            Write-back
+          </span>
+          <span>
+            <strong>1</strong>
+            Agent bridge
+          </span>
+        </div>
+      </div>
+      <div className="connector-settings-grid">
+        {CONNECTOR_SETTINGS.map((connector) => (
+          <ConnectorSetupCard
+            key={connector.id}
+            connector={{
+              ...connector,
+              status: connector.id === "google" ? (googleConnected ? "Connected" : "Needs OAuth") : connector.status,
+            }}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ConnectorSetupCard({ connector }) {
+  const connected = !["Needs OAuth", "Not connected"].includes(connector.status);
+  return (
+    <article className={`connector-setup-card ${connector.id} ${connected ? "ready" : "attention"}`}>
+      <div className="connector-setup-top">
+        <span className={`platform-icon ${connector.id === "google" ? "calendar" : connector.id}`}>
+          {connector.id === "github" ? (
+            <span className="connector-letter">GH</span>
+          ) : connector.id === "bitbucket" ? (
+            <span className="connector-letter">BB</span>
+          ) : connector.id === "hermes" ? (
+            <span className="connector-letter">H</span>
+          ) : connector.id === "google" ? (
+            <PlatformLogo platform="calendar" />
+          ) : (
+            <PlatformLogo platform={connector.id} />
+          )}
+        </span>
+        <div>
+          <strong>{connector.label}</strong>
+          <small>{connector.group}</small>
+        </div>
+        <span className={`status-pill ${connected ? "reviewed" : "unreviewed"}`}>{connector.status}</span>
+      </div>
+      <p>{connector.purpose}</p>
+      <div className="connector-setup-meta">
+        <span>{connector.mode}</span>
+        <span>{connector.fields.length} setup fields</span>
+      </div>
+      <details className="connector-setup-details">
+        <summary>View setup fields</summary>
+        <div>
+          {connector.fields.map((field) => (
+            <span key={field}>{field}</span>
+          ))}
+        </div>
+      </details>
+    </article>
   );
 }
 
@@ -3261,6 +4424,976 @@ function HandoffSummaryReport({ result }) {
     </>
   );
 }
+
+function ProjectTrackerPage({ workspace, onWorkspaceUpdated, onSwitchProject }) {
+  const [projects, setProjects] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [hermesTasks, setHermesTasks] = useState([]);
+  const [ticketTracker, setTicketTracker] = useState([]);
+  const [selectedTicketId, setSelectedTicketId] = useState("");
+
+  useEffect(() => {
+    loadProjects();
+    loadHermesStatuses();
+    loadTicketTracker();
+    const interval = setInterval(() => {
+      loadHermesStatuses();
+      loadTicketTracker();
+    }, 8000);
+    return () => clearInterval(interval);
+  }, [workspace?.local_path]);
+
+  function loadProjects() {
+    api("/api/workspace")
+      .then(setProjects)
+      .catch(() => setProjects([]));
+  }
+
+  function loadHermesStatuses() {
+    const query = workspace?.local_path ? `?project=${encodeURIComponent(workspace.local_path)}` : "";
+    api(`/api/hermes/status/current${query}`)
+      .then(setHermesTasks)
+      .catch(() => setHermesTasks([]));
+  }
+
+  function loadTicketTracker() {
+    const query = workspace?.local_path ? `?project=${encodeURIComponent(workspace.local_path)}` : "";
+    api(`/api/tickets/tracker${query}`)
+      .then((tickets) => {
+        setTicketTracker(tickets);
+        setSelectedTicketId((current) =>
+          tickets.some((ticket) => ticket.task_id === current) ? current : tickets[0]?.task_id || "",
+        );
+      })
+      .catch(() => setTicketTracker([]));
+  }
+
+  async function activateProject(id) {
+    setError("");
+    setLoading(true);
+    try {
+      const saved = await api(`/api/workspace/${id}/activate`, { method: "POST" });
+      onWorkspaceUpdated?.(saved);
+      loadProjects();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const displayProjects = projects.length
+    ? projects
+    : workspace
+      ? [workspace]
+      : [{ id: "empty", name: "No project connected", local_path: "Connect a repo first" }];
+  const activeProject = displayProjects.find((project) => project.active) || workspace;
+  const connectedCount = displayProjects.filter((project) => project.id !== "empty").length;
+  const readyProjectCount = displayProjects.filter(
+    (project) => project.index_status === "ready" && project.graphify_index_status === "ready",
+  ).length;
+  const attentionCount = displayProjects.filter(
+    (project) => project.index_status === "failed" || project.graphify_index_status === "failed" || project.id === "empty",
+  ).length;
+  const selectedTicket =
+    ticketTracker.find((ticket) => ticket.task_id === selectedTicketId) || ticketTracker[0];
+  const phaseStates = selectedTicket?.phases || [];
+  const completedPhaseCount = phaseStates.filter((phase) => phase.state === "done").length;
+  const pendingPhaseCount = phaseStates.filter((phase) => phase.state === "pending").length;
+  const progressPercent = phaseStates.length
+    ? Math.round((completedPhaseCount / phaseStates.length) * 100)
+    : 0;
+  const currentPhase = phaseStates.find((phase) => phase.state === "active") || phaseStates[phaseStates.length - 1];
+  const readyStatus = activeProject?.index_status === "ready" ? "Repo graph ready" : "Repo graph needs setup";
+  const diagramStatus = activeProject?.graphify_index_status === "ready" ? "Diagram graph ready" : "Diagram graph optional";
+
+  return (
+    <section className="screen project-monitor-page project-tracker-page">
+      <HeaderBlock
+        eyebrow="Project tracker"
+        title="Project delivery control"
+        subtitle="Track connected projects, analysis readiness, and the current delivery phase before work is synced to Jira, QA, or Hermes."
+      />
+      <div className="tracker-command-strip">
+        <div>
+          <span className="source-pill">Active workspace</span>
+          <h2>{activeProject?.name || "No project selected"}</h2>
+          <p>{activeProject?.local_path || "Connect a project before starting analyst tracking."}</p>
+        </div>
+        <div className="tracker-kpi-grid">
+          <Stat label="Projects" value={String(connectedCount)} />
+          <Stat label="Ready graphs" value={String(readyProjectCount)} />
+          <Stat label="Needs action" value={String(attentionCount)} />
+          <Stat label="Active phase" value="Dev" />
+        </div>
+      </div>
+
+      <div className="project-tracker-grid">
+        <section className="tracker-panel project-portfolio-panel">
+          <div className="tracker-panel-head">
+            <div>
+              <span className="source-pill">Portfolio</span>
+              <h2>Connected project portfolio</h2>
+              <p>Switch which repo powers Repo AI, impact analysis, project overview, and ticket workflow context.</p>
+            </div>
+            <button className="btn ghost compact" type="button" onClick={onSwitchProject}>
+              Connect project
+            </button>
+          </div>
+          <div className="project-switch-list">
+            <div className="portfolio-selector-panel">
+              <label className="field-label" htmlFor="project-tracker-project-select">
+                Active project
+              </label>
+              <div className="premium-select-row">
+                <select
+                  id="project-tracker-project-select"
+                  value={activeProject?.id || ""}
+                  disabled={loading || displayProjects[0]?.id === "empty"}
+                  onChange={(event) => {
+                    const id = event.target.value;
+                    if (id && id !== activeProject?.id) activateProject(id);
+                  }}
+                >
+                  {displayProjects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+                <span>{loading ? "Switching..." : "Synced workspace"}</span>
+              </div>
+            </div>
+            <article className="active-portfolio-card">
+              <div>
+                <span className="source-pill">Current workspace</span>
+                <h3>{activeProject?.name || "No project selected"}</h3>
+                <p>{activeProject?.local_path || "Connect a repo first."}</p>
+              </div>
+              <div className="portfolio-health-grid">
+                <span>
+                  <strong>{readyStatus}</strong>
+                  {indexStatusLabel(activeProject?.index_status, activeProject?.index_error)}
+                </span>
+                <span>
+                  <strong>{diagramStatus}</strong>
+                  {indexStatusLabel(activeProject?.graphify_index_status, activeProject?.graphify_index_error)}
+                </span>
+              </div>
+            </article>
+            {displayProjects.map((project) => (
+              <article key={project.id} className={project.active ? "active" : ""}>
+                <div>
+                  <strong>{project.name}</strong>
+                  <span>{project.local_path}</span>
+                  {project.index_status && (
+                    <small>
+                      Code graph: {indexStatusLabel(project.index_status, project.index_error)} · Diagram graph:{" "}
+                      {indexStatusLabel(project.graphify_index_status, project.graphify_index_error)}
+                    </small>
+                  )}
+                </div>
+                {project.active ? (
+                  <span className="tag good">Active</span>
+                ) : project.id !== "empty" ? (
+                  <button className="btn ghost compact" type="button" disabled={loading} onClick={() => activateProject(project.id)}>
+                    Switch project
+                  </button>
+                ) : (
+                  <button className="btn ghost compact" type="button" onClick={onSwitchProject}>
+                    Connect project
+                  </button>
+                )}
+              </article>
+            ))}
+          </div>
+          {error && <ErrorBox message={error} />}
+        </section>
+
+        <section className="tracker-panel phase-command-panel">
+          <div className="tracker-panel-head">
+            <div>
+              <span className="source-pill">Delivery flow</span>
+              <h2>Work phase monitor</h2>
+              <p>Per-ticket view — pick a ticket to see requirement review, impact analysis, development, testing, handoff, and Jira/UI sync.</p>
+            </div>
+          </div>
+          {ticketTracker.length === 0 && (
+            <p className="muted-note">No tickets yet — run a requirement analysis to see it tracked here.</p>
+          )}
+          {ticketTracker.length > 0 && (
+            <div className="phase-monitor-control">
+              <label className="field-label" htmlFor="project-tracker-ticket-select">
+                Tracked ticket
+              </label>
+              <select
+                id="project-tracker-ticket-select"
+                value={selectedTicket?.task_id || ""}
+                onChange={(event) => setSelectedTicketId(event.target.value)}
+              >
+                {ticketTracker.map((ticket) => (
+                  <option key={ticket.task_id} value={ticket.task_id}>
+                    {ticket.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {selectedTicket && (
+            <section className="phase-monitor-hero">
+              <div>
+                <div className="phase-ticket-label">
+                  <span className={`ticket-type-dot ${selectedTicket.ticket_type}`} aria-hidden="true" />
+                  <small>{selectedTicket.ticket_type === "change_request" ? "Change request" : "Ticket"}</small>
+                </div>
+                <h3>{selectedTicket.title}</h3>
+                <p>Current phase: {currentPhase?.name || "Waiting for workflow activity"}</p>
+              </div>
+              <div className="phase-progress-ring" style={{ "--progress": `${progressPercent}%` }}>
+                <strong>{progressPercent}%</strong>
+                <span>complete</span>
+              </div>
+            </section>
+          )}
+          <div className="phase-monitor-metrics">
+            <span>
+              <strong>{completedPhaseCount}</strong>
+              Done
+            </span>
+            <span>
+              <strong>{currentPhase?.name || "-"}</strong>
+              Current phase
+            </span>
+            <span>
+              <strong>{pendingPhaseCount}</strong>
+              Pending
+            </span>
+          </div>
+          <div className="tracker-ticket-tabs">
+            {ticketTracker.map((ticket) => (
+              <button
+                key={ticket.task_id}
+                type="button"
+                className={ticket.task_id === selectedTicket?.task_id ? "active" : ""}
+                onClick={() => setSelectedTicketId(ticket.task_id)}
+              >
+                <span className={`ticket-type-dot ${ticket.ticket_type}`} aria-hidden="true" />
+                <span>{ticket.title}</span>
+              </button>
+            ))}
+          </div>
+          <div className="tracker-phase-timeline phase-board">
+            {phaseStates.map((phase, index) => (
+              <article key={phase.name} className={phase.state}>
+                <span>{index + 1}</span>
+                <div>
+                  <strong>{phase.name}</strong>
+                  <small>
+                    {phase.state === "done"
+                      ? "Completed"
+                      : phase.state === "active"
+                        ? "Current focus"
+                        : phase.state === "skipped"
+                          ? "Skipped — went straight to Hermes"
+                          : "Pending"}
+                  </small>
+                </div>
+              </article>
+            ))}
+          </div>
+          <div className="tracker-next-action-panel">
+            <div>
+              <span className="source-pill">Next action</span>
+              <strong>Review current ticket status before closing the handoff.</strong>
+            </div>
+            <p>Get ticket -&gt; requirement review -&gt; impact analysis -&gt; development/fix -&gt; testing sync -&gt; Jira/UI sync -&gt; complete.</p>
+          </div>
+        </section>
+      </div>
+
+      <section className="tracker-panel hermes-status-panel">
+        <div className="tracker-panel-head">
+          <div>
+            <span className="source-pill">Hermes bridge</span>
+            <h2>Hermes handoff status</h2>
+            <p>Live progress reported back by Hermes, scoped to {activeProject?.name || "the active project"}.</p>
+          </div>
+        </div>
+        {hermesTasks.length === 0 ? (
+          <p className="muted-note">No task has been sent to Hermes yet, or Hermes hasn't reported a status back.</p>
+        ) : (
+          <div className="project-switch-list">
+            {hermesTasks.map((task) => (
+              <article key={task.source_task_id}>
+                <div>
+                  <strong>Task {task.source_task_id.slice(0, 8)}</strong>
+                  <span>{task.note || "No note from Hermes."}</span>
+                </div>
+                <span className="tag good">{task.status}</span>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+    </section>
+  );
+}
+
+function TicketKanbanPage({ workspace }) {
+  const [tickets, setTickets] = useState([]);
+  const [hermesTasks, setHermesTasks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    loadBoard();
+    const interval = setInterval(loadBoard, 8000);
+    return () => clearInterval(interval);
+  }, [workspace?.local_path]);
+
+  function loadBoard() {
+    const query = workspace?.local_path ? `?project=${encodeURIComponent(workspace.local_path)}` : "";
+    Promise.all([
+      api(`/api/tickets/tracker${query}`).catch(() => []),
+      api(`/api/hermes/status/current${query}`).catch(() => []),
+    ])
+      .then(([ticketRows, hermesRows]) => {
+        setTickets(ticketRows);
+        setHermesTasks(hermesRows);
+        setError("");
+      })
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }
+
+  const cards = [];
+  for (const ticket of tickets) {
+    const columnId = kanbanColumnForTicket(ticket);
+    if (!columnId) continue;
+    const doneCount = (ticket.phases || []).filter((phase) => phase.state === "done").length;
+    const activePhase = (ticket.phases || []).find((phase) => phase.state === "active");
+    cards.push({
+      id: ticket.task_id,
+      columnId,
+      kind: "mini",
+      title: ticket.title,
+      badge: ticket.ticket_type === "change_request" ? "Change request" : "Issue",
+      stageLabel: activePhase?.name || "Jira / UI Sync",
+      updatedAt: ticket.updated_at,
+      progressPercent: Math.round((doneCount / (ticket.phases || []).length) * 100) || 0,
+      note: null,
+    });
+  }
+  for (const task of hermesTasks) {
+    const columnId = kanbanColumnForHermesTask(task);
+    if (!columnId) continue;
+    const orderIndex = HERMES_STATUS_ORDER.indexOf(task.status);
+    cards.push({
+      id: task.source_task_id,
+      columnId,
+      kind: "hermes",
+      title: `Hermes incident ${task.source_task_id.slice(0, 8)}`,
+      badge: "Hermes",
+      stageLabel: task.status,
+      updatedAt: task.create_date,
+      progressPercent: Math.round((orderIndex / (HERMES_STATUS_ORDER.length - 1)) * 100),
+      note: task.note,
+    });
+  }
+  const cardsByColumn = Object.fromEntries(
+    KANBAN_COLUMN_META.map((column) => [
+      column.id,
+      cards
+        .filter((card) => card.columnId === column.id)
+        .sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0)),
+    ]),
+  );
+
+  const totalTickets = cards.length;
+  const activeTickets = totalTickets - cardsByColumn.done.length;
+  const reviewTickets = cardsByColumn.review.length;
+  const doneTickets = cardsByColumn.done.length;
+
+  return (
+    <section className="screen project-monitor-page">
+      <HeaderBlock
+        eyebrow="Ticket Kanban"
+        title="Project ticket control board"
+        subtitle="Real progress merged from mini-Project's own review phases and Hermes's reported incident status — no placeholder tickets."
+      />
+
+      <div className="kanban-command-panel">
+        <div>
+          <span className="source-pill">Selected project</span>
+          <h2>{workspace?.name || "No project connected"}</h2>
+          {workspace?.local_path && <p>{workspace.local_path}</p>}
+        </div>
+        <div className="kanban-sync-strip">
+          <span>mini-Project tickets: review-gated</span>
+          <span>Hermes incidents: accepted onward</span>
+        </div>
+      </div>
+
+      {error && <ErrorBox message={error} />}
+
+      <div className="kanban-status-grid">
+        <Stat label="Total tickets" value={String(totalTickets)} />
+        <Stat label="Active work" value={String(activeTickets)} />
+        <Stat label="Needs review" value={String(reviewTickets)} />
+        <Stat label="Completed" value={String(doneTickets)} />
+      </div>
+
+      <div className="kanban-workflow-strip">
+        {["Intake", "Analysis", "Development", "Testing", "Review", "Report"].map((step, index) => (
+          <span key={step}>
+            <strong>{index + 1}</strong>
+            {step}
+          </span>
+        ))}
+      </div>
+
+      {!loading && totalTickets === 0 && !error && (
+        <p className="muted-note">
+          No ticket has passed requirement review yet, and no Hermes incident has been accepted. Review a requirement
+          analysis or wait for Hermes to accept a handoff to see cards here.
+        </p>
+      )}
+
+      <div className="formal-kanban-board">
+        {KANBAN_COLUMN_META.map((column) => (
+          <section key={column.id} className={`formal-kanban-column kanban-${column.id}`}>
+            <div className="formal-kanban-column-head">
+              <div>
+                <span>{column.title}</span>
+                <small>{column.summary}</small>
+              </div>
+              <strong>{cardsByColumn[column.id].length}</strong>
+            </div>
+            {cardsByColumn[column.id].map((card) => (
+              <article key={card.id} className="formal-ticket-card">
+                <div className="formal-ticket-topline">
+                  <span className="ticket-key">{card.id.slice(0, 8)}</span>
+                  <span className={`kanban-source-badge source-${card.kind}`}>{card.badge}</span>
+                </div>
+                <h3>{card.title}</h3>
+                <div className="ticket-meta-row">
+                  {card.updatedAt && <span>Updated {formatRelativeTime(card.updatedAt)}</span>}
+                </div>
+                <div className="ticket-stage-block">
+                  <span>Current stage</span>
+                  <strong>{card.stageLabel}</strong>
+                </div>
+                <div className="ticket-progress-track" aria-label={`${card.progressPercent}% complete`}>
+                  <span style={{ width: `${card.progressPercent}%` }} />
+                </div>
+                {card.note && (
+                  <div className="ticket-next-action">
+                    <small>Hermes note</small>
+                    <p>{card.note}</p>
+                  </div>
+                )}
+              </article>
+            ))}
+          </section>
+        ))}
+      </div>
+
+      <div className="kanban-operations-panel">
+        <div>
+          <span className="source-pill">Operating rule</span>
+          <p>Every ticket moves only after the analyst review gate is confirmed. Pass, not-pass, and pending decisions can later sync back to Jira or Hermes.</p>
+        </div>
+        <div>
+          <span className="source-pill">Sources</span>
+          <p>mini-Project tickets follow the 6-phase Work phase monitor; Hermes incidents follow Hermes's own reported status.</p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function TestingSyncPrototype({ workspace }) {
+  return (
+    <section className="screen prototype-screen">
+      <HeaderBlock
+        eyebrow="Enhancement prototype"
+        title="Testing + progress sync loop"
+        subtitle="Dummy view for pass, not-pass, and pending testing decisions that can later update Jira and Hermes without leaving the platform."
+      />
+      <div className="prototype-hero">
+        <div>
+          <span className="source-pill">Analyst control layer</span>
+          <h2>Track testing status before the handoff is closed</h2>
+          <p>
+            {workspace?.name || "Connected project"} testing decisions can become structured status updates instead of separate Jira comments,
+            Discord messages, and manual reports.
+          </p>
+        </div>
+        <div className="prototype-metrics">
+          <Stat label="Pending" value="1" />
+          <Stat label="Not pass" value="1" />
+          <Stat label="Pass" value="1" />
+        </div>
+      </div>
+      <div className="prototype-board three">
+        {TESTING_SYNC_COLUMNS.map((column) => (
+          <section key={column.id} className={`prototype-column ${column.id}`}>
+            <div className="prototype-column-head">
+              <strong>{column.title}</strong>
+              <span>{column.items.length}</span>
+            </div>
+            {column.items.map((item) => (
+              <article key={item.key} className="prototype-card">
+                <span className="source-pill">{item.key}</span>
+                <h3>{item.title}</h3>
+                <p>{item.action}</p>
+                <div className="prototype-card-footer">
+                  <span>{item.owner}</span>
+                  <strong>{item.status}</strong>
+                </div>
+              </article>
+            ))}
+          </section>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function DbDiagnosticsPrototype({ workspace }) {
+  return (
+    <section className="screen prototype-screen">
+      <HeaderBlock
+        eyebrow="Enhancement prototype"
+        title="DB diagnostic request flow"
+        subtitle="Dummy view for cases where log or code evidence is not enough and the analyst needs a safe read-only DB check from a technical owner."
+      />
+      <div className="prototype-grid two">
+        <section className="prototype-panel">
+          <span className="source-pill">Evidence gap</span>
+          <h2>Generate a check request, not a database connection</h2>
+          <p>
+            For restricted projects, the platform can ask for the exact DB evidence needed while the actual query is executed by an authorized
+            developer or DBA.
+          </p>
+          <div className="prototype-flow">
+            <span>AI detects DB-state claim</span>
+            <span>Draft read-only check</span>
+            <span>Owner uploads result</span>
+            <span>Rerun analysis</span>
+          </div>
+        </section>
+        <section className="prototype-panel dark">
+          <span className="source-pill">Project</span>
+          <h2>{workspace?.name || "No project selected"}</h2>
+          <p>Future backend hook: store open DB requests against the artifact and include result state in evidence gate.</p>
+        </section>
+      </div>
+      <div className="prototype-list">
+        {DB_DIAGNOSTIC_REQUESTS.map((item) => (
+          <article key={item.id} className="prototype-row-card">
+            <div>
+              <span className="source-pill">{item.id}</span>
+              <h3>{item.claim}</h3>
+              <p>{item.query}</p>
+            </div>
+            <div>
+              <strong>{item.state}</strong>
+              <span>{item.owner}</span>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function EvidenceGatePrototype({ workspace }) {
+  return (
+    <section className="screen prototype-screen">
+      <HeaderBlock
+        eyebrow="Enhancement prototype"
+        title="Evidence readiness gate"
+        subtitle="Dummy checklist for deciding whether an RCA, impact analysis, or handoff is grounded enough to move forward."
+      />
+      <div className="prototype-hero evidence">
+        <div>
+          <span className="source-pill">Review gate</span>
+          <h2>Stop weak findings before they reach Jira, Hermes, or stakeholders</h2>
+          <p>
+            This page turns Hermes evidence discipline into an analyst-readable checklist for {workspace?.name || "the connected project"}.
+          </p>
+        </div>
+        <div className="prototype-score-ring">
+          <strong>3/5</strong>
+          <span>ready</span>
+        </div>
+      </div>
+      <div className="prototype-gate-list">
+        {EVIDENCE_GATE_ITEMS.map(([label, status, note]) => (
+          <article key={label} className={`prototype-gate-card ${status.toLowerCase().replace(/\s+/g, "-")}`}>
+            <div>
+              <span>{label}</span>
+              <strong>{status}</strong>
+            </div>
+            <p>{note}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function hermesStepState(stepLabel, currentStatus) {
+  if (!currentStatus) {
+    return "pending";
+  }
+  const stepIndex = HERMES_STATUS_ORDER.indexOf(stepLabel);
+  const currentIndex = HERMES_STATUS_ORDER.indexOf(currentStatus);
+  if (stepIndex < 0 || currentIndex < 0) {
+    return "pending";
+  }
+  if (stepIndex < currentIndex) return "done";
+  if (stepIndex === currentIndex) return "waiting";
+  return "pending";
+}
+
+function HermesTrackerPrototype({ workspace }) {
+  const [tracked, setTracked] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
+  useEffect(() => {
+    loadCurrentStatuses();
+    const interval = setInterval(loadCurrentStatuses, 8000);
+    return () => clearInterval(interval);
+  }, [workspace?.local_path]);
+
+  function loadCurrentStatuses() {
+    const query = workspace?.local_path ? `?project=${encodeURIComponent(workspace.local_path)}` : "";
+    api(`/api/hermes/status/current${query}`)
+      .then((rows) => {
+        setTracked(rows);
+        setError("");
+      })
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }
+
+  // create_date is when the CURRENT status was last recorded, not when the
+  // task was first sent to Hermes — filtering by it answers "what changed in
+  // this window", which is the more useful question for a tracker page.
+  const filteredTracked = tracked.filter((task) => {
+    if (!task.create_date) return true;
+    const updatedAt = new Date(task.create_date);
+    if (dateFrom && updatedAt < new Date(`${dateFrom}T00:00:00`)) return false;
+    if (dateTo && updatedAt > new Date(`${dateTo}T23:59:59`)) return false;
+    return true;
+  });
+  const dateFilterActive = Boolean(dateFrom || dateTo);
+
+  const activeCount = filteredTracked.filter((task) => task.status && task.status !== "Close summary").length;
+  const completedCount = filteredTracked.filter((task) => task.status === "Close summary").length;
+  const waitingCount = filteredTracked.filter(
+    (task) => task.status === "Hermes accepted" || task.status === "Developer update",
+  ).length;
+
+  return (
+    <section className="screen hermes-dashboard-page">
+      <HeaderBlock
+        eyebrow="Hermes bridge"
+        title="Hermes handoff tracker"
+        subtitle="Monitor reviewed analyst packages after they are handed off to Hermes, from intake acceptance to developer update, testing decision, and final summary."
+      />
+
+      <div className="hermes-command-center">
+        <section className="hermes-hero-panel">
+          <div>
+            <span className="source-pill">External execution bridge</span>
+            <h2>Reviewed handoffs, tracked after send</h2>
+            <p>
+              mini-Project keeps the analyst-owned evidence and review gate. Hermes receives the approved package and reports
+              progress back through <code>POST /api/hermes/status</code>.
+            </p>
+          </div>
+          <div className="hermes-project-card">
+            <span>Current project</span>
+            <strong>{workspace?.name || "No project connected"}</strong>
+            <small>{workspace?.local_path || "Connect a project to ground handoffs in repo context."}</small>
+          </div>
+        </section>
+
+        <div className="hermes-metric-grid">
+          <div className="hermes-metric-card">
+            <span className="hermes-metric-icon" aria-hidden="true">&#9635;</span>
+            <div>
+              <strong>{filteredTracked.length}</strong>
+              <span>Tracked handoffs</span>
+            </div>
+          </div>
+          <div className="hermes-metric-card accent-amber">
+            <span className="hermes-metric-icon" aria-hidden="true">&#9679;</span>
+            <div>
+              <strong>{activeCount}</strong>
+              <span>Active</span>
+            </div>
+          </div>
+          <div className="hermes-metric-card accent-blue">
+            <span className="hermes-metric-icon" aria-hidden="true">&#8635;</span>
+            <div>
+              <strong>{waitingCount}</strong>
+              <span>Waiting update</span>
+            </div>
+          </div>
+          <div className="hermes-metric-card accent-teal">
+            <span className="hermes-metric-icon" aria-hidden="true">&#10003;</span>
+            <div>
+              <strong>{completedCount}</strong>
+              <span>Closed</span>
+            </div>
+          </div>
+        </div>
+
+        <section className="hermes-flow-strip" aria-label="Hermes handoff flow">
+          {HERMES_STATUS_ORDER.map((label, index) => (
+            <span key={label}>
+              <strong>{index + 1}</strong>
+              {label}
+            </span>
+          ))}
+        </section>
+      </div>
+
+      {error && <ErrorBox message={error} />}
+
+      {loading && tracked.length === 0 && !error && (
+        <div className="hermes-task-stack">
+          {[0, 1].map((i) => (
+            <section className="hermes-task-card hermes-skeleton" key={i} aria-hidden="true">
+              <div className="hermes-skeleton-line wide" />
+              <div className="hermes-skeleton-line" />
+              <div className="hermes-skeleton-rail" />
+            </section>
+          ))}
+        </div>
+      )}
+
+      {!loading && tracked.length > 0 && (
+        <div className="hermes-date-filter">
+          <span className="hermes-date-filter-label">Filter by last-updated date</span>
+          <div className="hermes-date-filter-inputs">
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(event) => setDateFrom(event.target.value)}
+              aria-label="From date"
+            />
+            <span>to</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(event) => setDateTo(event.target.value)}
+              aria-label="To date"
+            />
+          </div>
+          {dateFilterActive && (
+            <button
+              className="btn ghost compact"
+              type="button"
+              onClick={() => {
+                setDateFrom("");
+                setDateTo("");
+              }}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      )}
+
+      {!loading && tracked.length === 0 && !error && (
+        <section className="hermes-empty-state">
+          <span className="hermes-empty-icon" aria-hidden="true">&#8987;</span>
+          <span className="source-pill">No active handoff</span>
+          <h2>No Hermes task is currently tracked</h2>
+          <p>Send a reviewed handoff summary to Hermes, then this page will show its intake, developer update, testing decision, and close status.</p>
+        </section>
+      )}
+
+      {!loading && tracked.length > 0 && filteredTracked.length === 0 && (
+        <section className="hermes-empty-state">
+          <span className="hermes-empty-icon" aria-hidden="true">&#128197;</span>
+          <span className="source-pill">No match in this range</span>
+          <h2>No Hermes task updated in the selected date range</h2>
+          <p>Widen or clear the date filter above to see the {tracked.length} tracked task{tracked.length === 1 ? "" : "s"}.</p>
+        </section>
+      )}
+
+      <div className="hermes-task-stack">
+        {filteredTracked.map((task) => {
+          const currentIndex = HERMES_STATUS_ORDER.indexOf(task.status);
+          return (
+            <section className={`hermes-task-card accent-${hermesStatusTone(task.status)}`} key={task.source_task_id}>
+              <div className="hermes-task-head">
+                <div>
+                  <div className="hermes-task-eyebrow">
+                    <span className="hermes-task-id">{task.source_task_id.slice(0, 8)}</span>
+                    <span className={`hermes-status-badge tone-${hermesStatusTone(task.status)}`}>
+                      {task.status || "Waiting for Hermes status"}
+                    </span>
+                    {task.create_date && (
+                      <span className="hermes-task-date" title={formatDate(task.create_date)}>
+                        Updated {formatRelativeTime(task.create_date)}
+                      </span>
+                    )}
+                  </div>
+                  {task.note && <p>{task.note}</p>}
+                </div>
+                <button className="btn ghost compact" type="button" onClick={loadCurrentStatuses}>
+                  Refresh
+                </button>
+              </div>
+
+              <div className="hermes-stage-rail" role="list">
+                <div className="hermes-stage-rail-track">
+                  <div
+                    className="hermes-stage-rail-fill"
+                    style={{ width: `${currentIndex <= 0 ? 0 : (currentIndex / (HERMES_STATUS_ORDER.length - 1)) * 100}%` }}
+                  />
+                </div>
+                {HERMES_STATUS_ORDER.map((label, index) => {
+                  const state = hermesStepState(label, task.status);
+                  return (
+                    <div
+                      key={label}
+                      className={`hermes-stage-step ${state}`}
+                      role="listitem"
+                      title={hermesStepDescription(label)}
+                    >
+                      <span className="hermes-stage-marker">{state === "done" ? "✓" : index + 1}</span>
+                      <div className="hermes-stage-copy">
+                        <strong>{label}</strong>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {task.similar_issues && (
+                <details className="hermes-similar-issues">
+                  <summary>
+                    <span className="hermes-similar-issues-icon" aria-hidden="true">&#128269;</span>
+                    Similar past incidents found (Hermes RAG check)
+                  </summary>
+                  <div className="hermes-similar-issues-body">{renderSimilarIssuesLite(task.similar_issues)}</div>
+                </details>
+              )}
+            </section>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function hermesStatusTone(status) {
+  if (status === "Close summary") return "teal";
+  if (status === "Testing decision") return "blue";
+  if (status === "Developer update" || status === "Hermes accepted") return "amber";
+  return "muted";
+}
+
+function renderSimilarIssuesInline(text) {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, i) =>
+    part.startsWith("**") && part.endsWith("**") ? <strong key={i}>{part.slice(2, -2)}</strong> : part,
+  );
+}
+
+/** Lightweight ##/###/-/** formatter for Hermes's RAG markdown output — not a full markdown parser, just enough to turn a wall of text into readable headings and lists. */
+function renderSimilarIssuesLite(text) {
+  const blocks = [];
+  let currentList = null;
+  text.split("\n").forEach((rawLine, index) => {
+    const line = rawLine.trim();
+    if (line.startsWith("### ")) {
+      currentList = null;
+      blocks.push({ key: `h4-${index}`, node: <h4>{line.slice(4)}</h4> });
+    } else if (line.startsWith("## ")) {
+      currentList = null;
+      blocks.push({ key: `h3-${index}`, node: <h3>{line.slice(3)}</h3> });
+    } else if (line.startsWith("- ") || line.startsWith("* ")) {
+      if (!currentList) {
+        currentList = { key: `ul-${index}`, items: [] };
+        blocks.push(currentList);
+      }
+      currentList.items.push(<li key={index}>{renderSimilarIssuesInline(line.slice(2))}</li>);
+    } else if (line) {
+      currentList = null;
+      blocks.push({ key: `p-${index}`, node: <p>{renderSimilarIssuesInline(line)}</p> });
+    } else {
+      currentList = null;
+    }
+  });
+  return blocks.map((block) =>
+    block.items ? (
+      <ul key={block.key}>{block.items}</ul>
+    ) : (
+      <React.Fragment key={block.key}>{block.node}</React.Fragment>
+    ),
+  );
+}
+
+function hermesStepDescription(label) {
+  if (label === "Sent to Hermes") return "Reviewed analyst package is delivered to Hermes intake.";
+  if (label === "Hermes accepted") return "Hermes has accepted the task or thread for follow-up.";
+  if (label === "Developer update") return "Developer or technical agent reports fix progress.";
+  if (label === "Testing decision") return "Pass, not-pass, or pending result is confirmed.";
+  return "Final analyst close summary is ready for reporting.";
+}
+
+function MemoryCenterPrototype({ workspace }) {
+  return (
+    <section className="screen prototype-screen">
+      <HeaderBlock
+        eyebrow="Enhancement prototype"
+        title="Similar past change memory"
+        subtitle="Dummy memory page for reducing repeated analyst work by reusing previous impact areas, test scope, and clarification notes."
+      />
+      <div className="prototype-hero">
+        <div>
+          <span className="source-pill">RAG / Memory</span>
+          <h2>Compare this ticket with previous work</h2>
+          <p>
+            Instead of starting from zero, the analyst can see what was affected last time in {workspace?.name || "the project"} and what test
+            coverage was reused.
+          </p>
+        </div>
+        <div className="prototype-metrics">
+          <Stat label="Matches" value="3" />
+          <Stat label="Reusable tests" value="7" />
+          <Stat label="Risk notes" value="4" />
+        </div>
+      </div>
+      <div className="prototype-memory-grid">
+        {MEMORY_MATCHES.map((item) => (
+          <article key={item.title} className="prototype-memory-card">
+            <div className="prototype-memory-score">{item.score}</div>
+            <div>
+              <h3>{item.title}</h3>
+              <p>{item.outcome}</p>
+              <span>{item.reuse}</span>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function RoleScreen({ onSelect }) {
   return (
     <section className="screen">
@@ -4256,7 +6389,7 @@ function ExternalHandoff({ artifact, handoffs, onReload, initialSummary = "Revie
       <div className="handoff-approval-box">
         <div>
           <span className="source-pill">AI draft reviewed</span>
-          <strong>Human approval required before Jira or PR update</strong>
+          <strong>Human approval required before Jira, PR, or Hermes handoff</strong>
           <p>
             This handoff uses reviewed artifact <code>{artifact.task_id}</code>. Confirm the summary and evidence before sending it to an external tool.
           </p>
@@ -4306,6 +6439,9 @@ function ExternalHandoff({ artifact, handoffs, onReload, initialSummary = "Revie
         </button>
         <button className="btn ghost" type="button" disabled={Boolean(loading) || !approved} onClick={() => send("bitbucket")}>
           {loading === "bitbucket" ? "Posting..." : "Comment Bitbucket PR"}
+        </button>
+        <button className="btn ghost" type="button" disabled={Boolean(loading) || !approved} onClick={() => send("hermes")}>
+          {loading === "hermes" ? "Sending..." : "Send to Hermes"}
         </button>
       </div>
       <ul className="handoff-list">
@@ -5144,7 +7280,11 @@ async function api(path, options = {}) {
     const text = await response.text();
     throw new Error(`HTTP ${response.status}: ${text || response.statusText}`);
   }
-  return response.json();
+  const text = await response.text();
+  if (!text) {
+    return null;
+  }
+  return JSON.parse(text);
 }
 
 function formatDate(value) {
@@ -5153,6 +7293,68 @@ function formatDate(value) {
   } catch {
     return value;
   }
+}
+
+function formatRelativeTime(value) {
+  try {
+    const then = new Date(value).getTime();
+    const diffSeconds = Math.round((Date.now() - then) / 1000);
+    if (diffSeconds < 60) return "just now";
+    const diffMinutes = Math.round(diffSeconds / 60);
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+    const diffHours = Math.round(diffMinutes / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.round(diffHours / 24);
+    if (diffDays < 30) return `${diffDays}d ago`;
+    return new Date(value).toLocaleDateString();
+  } catch {
+    return formatDate(value);
+  }
+}
+
+function buildProjectProcessColumns(projects) {
+  const columns = [
+    { id: "active", title: "Active", projects: [] },
+    { id: "indexing", title: "Indexing", projects: [] },
+    { id: "ready", title: "Ready", projects: [] },
+    { id: "attention", title: "Needs action", projects: [] },
+  ];
+  const byId = Object.fromEntries(columns.map((column) => [column.id, column]));
+  projects.forEach((project) => {
+    byId[projectProcessStage(project)].projects.push(project);
+  });
+  return columns;
+}
+
+function projectProcessMetrics(projects) {
+  return projects.reduce(
+    (metrics, project) => {
+      metrics[projectProcessStage(project)] += 1;
+      return metrics;
+    },
+    { active: 0, indexing: 0, ready: 0, attention: 0 }
+  );
+}
+
+function projectProcessStage(project) {
+  if (project.active) return "active";
+  if (project.index_status === "indexing" || project.graphify_index_status === "indexing") return "indexing";
+  if (project.index_status === "ready" && project.graphify_index_status === "ready") return "ready";
+  return "attention";
+}
+
+function projectProcessHint(project) {
+  if (project.active) return "Currently used for Repo AI, impact analysis, and project overview.";
+  if (project.index_status === "indexing" || project.graphify_index_status === "indexing") {
+    return "Background indexing is still running. Switch after the graphs are ready.";
+  }
+  if (project.index_status === "ready" && project.graphify_index_status === "ready") {
+    return "Ready to switch into analysis with project graph and diagram support.";
+  }
+  if (project.index_status === "failed" || project.graphify_index_status === "failed") {
+    return "Indexing needs attention before diagram or repo-grounded analysis is reliable.";
+  }
+  return "Connect or re-index before using this project for analysis.";
 }
 
 function indexStatusLabel(status, error) {

@@ -65,6 +65,16 @@ public class AnalysisArtifactEntity {
     @Column(name = "parent_task_id", length = 36)
     private String parentTaskId;
 
+    /**
+     * local_path of whichever workspace was active when this artifact was
+     * created — lets the tracker scope tickets to the currently active
+     * project instead of mixing every connected project's tickets together.
+     * Nullable: artifacts created before this field existed, or with no
+     * workspace connected, simply won't match any project filter.
+     */
+    @Column(name = "project_path")
+    private String projectPath;
+
     @OneToMany(mappedBy = "artifact", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @OrderColumn(name = "position")
     private List<EvidenceEntity> evidence = new ArrayList<>();
@@ -74,7 +84,7 @@ public class AnalysisArtifactEntity {
     }
 
     public AnalysisArtifactEntity(String taskId, String profile, String agent, String skill,
-            String inputText, String resultJson, Instant createdAt, String parentTaskId) {
+            String inputText, String resultJson, Instant createdAt, String parentTaskId, String projectPath) {
         this.taskId = taskId;
         this.profile = profile;
         this.agent = agent;
@@ -84,6 +94,7 @@ public class AnalysisArtifactEntity {
         this.createdAt = createdAt;
         this.reviewed = false;
         this.parentTaskId = parentTaskId;
+        this.projectPath = projectPath;
     }
 
     public void addEvidence(String claim, String source) {
@@ -134,6 +145,10 @@ public class AnalysisArtifactEntity {
 
     public String getParentTaskId() {
         return parentTaskId;
+    }
+
+    public String getProjectPath() {
+        return projectPath;
     }
 
     public List<EvidenceEntity> getEvidence() {

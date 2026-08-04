@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.miniproject.backend.artifact.Artifact;
 import com.miniproject.backend.artifact.Evidence;
 import com.miniproject.backend.memory.MemoryCardService;
+import com.miniproject.backend.workspace.ProjectWorkspaceService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,12 +28,17 @@ public class ArtifactPersistenceService {
     private final AnalysisArtifactRepository repository;
     private final ObjectMapper objectMapper;
     private final MemoryCardService memoryCardService;
+    private final ProjectWorkspaceService projectWorkspaceService;
 
     public ArtifactPersistenceService(
-            AnalysisArtifactRepository repository, ObjectMapper objectMapper, MemoryCardService memoryCardService) {
+            AnalysisArtifactRepository repository,
+            ObjectMapper objectMapper,
+            MemoryCardService memoryCardService,
+            ProjectWorkspaceService projectWorkspaceService) {
         this.repository = repository;
         this.objectMapper = objectMapper;
         this.memoryCardService = memoryCardService;
+        this.projectWorkspaceService = projectWorkspaceService;
     }
 
     public <T> void save(Artifact<T> artifact, String profile, String inputText) {
@@ -44,9 +50,10 @@ public class ArtifactPersistenceService {
     public <T> void save(Artifact<T> artifact, String profile, String inputText, String parentTaskId) {
         try {
             String resultJson = objectMapper.writeValueAsString(artifact.result());
+            String projectPath = projectWorkspaceService.current().map(w -> w.getLocalPath()).orElse(null);
             AnalysisArtifactEntity entity = new AnalysisArtifactEntity(
                     artifact.taskId(), profile, artifact.agent(), artifact.skill(),
-                    inputText, resultJson, Instant.parse(artifact.createdAt()), parentTaskId);
+                    inputText, resultJson, Instant.parse(artifact.createdAt()), parentTaskId, projectPath);
             for (Evidence e : artifact.evidence()) {
                 entity.addEvidence(e.claim(), e.source());
             }
@@ -61,7 +68,8 @@ public class ArtifactPersistenceService {
         return repository.findAllByOrderByCreatedAtDesc().stream()
                 .map(e -> new ArtifactSummary(
                         e.getTaskId(), e.getProfile(), e.getSkill(), truncate(e.getInputText()), e.getCreatedAt().toString(),
-                        e.isReviewed(), e.getReviewedAt() == null ? null : e.getReviewedAt().toString(), e.getParentTaskId()))
+                        e.isReviewed(), e.getReviewedAt() == null ? null : e.getReviewedAt().toString(),
+                        e.getParentTaskId(), e.getProjectPath()))
                 .toList();
     }
 
@@ -141,6 +149,6 @@ public class ArtifactPersistenceService {
 
     public record ArtifactSummary(
             String taskId, String profile, String skill, String inputPreview, String createdAt,
-            boolean reviewed, String reviewedAt, String parentTaskId) {
+            boolean reviewed, String reviewedAt, String parentTaskId, String projectPath) {
     }
 }

@@ -131,6 +131,13 @@ integrations:
     username: ${BITBUCKET_USERNAME:}
     app-password: ${BITBUCKET_APP_PASSWORD:}
 
+  hermes:
+    # Sends reviewed analyst packages into the existing Hermes intake channel.
+    # Put the real webhook in application-local.yml or HERMES_DISCORD_WEBHOOK_URL.
+    enabled: ${HERMES_ENABLED:false}
+    discord-webhook-url: ${HERMES_DISCORD_WEBHOOK_URL:}
+    target-label: ${HERMES_TARGET_LABEL:Hermes Discord intake}
+
   google:
     # OAuth 2.0, covers Calendar (read-only) + Gmail (read-only) with one
     # connection — a Meet event's join link lives on the Calendar event

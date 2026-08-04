@@ -43,7 +43,8 @@ class EndpointSequenceDiagramServiceTest {
 
         String mermaid = service.generateMermaid(project, endpoints.get(0).id());
 
-        assertThat(mermaid).startsWith("sequenceDiagram");
+        assertThat(mermaid).startsWith("%%{init:");
+        assertThat(mermaid).contains("sequenceDiagram");
         assertThat(mermaid).contains("Laravel Route");
         assertThat(mermaid).contains("AidRequestController.approved()");
         assertThat(mermaid).contains("AidRequest model");
@@ -81,7 +82,8 @@ class EndpointSequenceDiagramServiceTest {
 
         String mermaid = service.generateMermaid(project, endpoints.get(0).id());
 
-        assertThat(mermaid).startsWith("sequenceDiagram");
+        assertThat(mermaid).startsWith("%%{init:");
+        assertThat(mermaid).contains("sequenceDiagram");
         assertThat(mermaid).contains("Spring MVC Route");
         assertThat(mermaid).contains("ProjectController.show()");
         assertThat(mermaid).contains("Database");
@@ -127,7 +129,8 @@ class EndpointSequenceDiagramServiceTest {
                 .orElseThrow();
         String mermaid = service.generateMermaid(project, postEndpoint.id(), "graphify");
 
-        assertThat(mermaid).startsWith("sequenceDiagram");
+        assertThat(mermaid).startsWith("%%{init:");
+        assertThat(mermaid).contains("sequenceDiagram");
         assertThat(mermaid).contains("React UI");
         assertThat(mermaid).contains("frontend api() helper");
         assertThat(mermaid).contains("POST /api/integrations/jira/import");
@@ -184,7 +187,8 @@ class EndpointSequenceDiagramServiceTest {
 
         String mermaid = service.generateMermaid(project, endpoints.get(0).id(), "graphify");
 
-        assertThat(mermaid).startsWith("sequenceDiagram");
+        assertThat(mermaid).startsWith("%%{init:");
+        assertThat(mermaid).contains("sequenceDiagram");
         assertThat(mermaid).contains("Graphify node app/Http/Controllers/FloodReportController.php L14");
         assertThat(mermaid).contains("FloodReport model");
         assertThat(mermaid).contains("EXTRACTED calls at app/Http/Controllers/FloodReportController.php L58");
@@ -241,7 +245,8 @@ class EndpointSequenceDiagramServiceTest {
 
         String mermaid = service.generateMermaid(project, endpoints.get(0).id(), "graphify");
 
-        assertThat(mermaid).startsWith("sequenceDiagram");
+        assertThat(mermaid).startsWith("%%{init:");
+        assertThat(mermaid).contains("sequenceDiagram");
         assertThat(mermaid).contains("Spring MVC Route");
         assertThat(mermaid).contains("Graphify node src/main/java/com/example/web/ProjectController.java L8");
         assertThat(mermaid).contains("calls .findAll()");

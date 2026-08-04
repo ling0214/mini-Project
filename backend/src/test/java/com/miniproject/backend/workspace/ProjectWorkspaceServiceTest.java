@@ -182,6 +182,49 @@ class ProjectWorkspaceServiceTest {
     }
 
     @Test
+    void graphifyIndexAtPathIndexesTheGivenSubfolderInsteadOfLocalPath(@TempDir Path tempDir) throws java.io.IOException {
+        Path subFolder = java.nio.file.Files.createDirectory(tempDir.resolve("pruserveplus-ipad"));
+        ProjectWorkspaceEntity current = new ProjectWorkspaceEntity(
+                "current-id", "PSP Frontend", null, tempDir.toString(), Instant.now());
+        current.markGraphifyIndexFailed("No supported code folders found for Graphify indexing.");
+        when(repository.findByActiveTrue()).thenReturn(Optional.of(current));
+        when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ProjectWorkspaceEntity result = service.graphifyIndexAtPath(subFolder.toString());
+
+        assertThat(result.getGraphifyIndexStatus()).isEqualTo("indexing");
+        assertThat(result.getGraphifyIndexPath()).isEqualTo(subFolder.toString());
+        assertThat(result.getLocalPath()).isEqualTo(tempDir.toString());
+        verify(graphifyIndexService, timeout(2000)).indexCodeOnly(eq(subFolder));
+    }
+
+    @Test
+    void graphifyIndexAtPathRejectsNonDirectory(@TempDir Path tempDir) {
+        Path notADirectory = tempDir.resolve("does-not-exist");
+        ProjectWorkspaceEntity current = new ProjectWorkspaceEntity(
+                "current-id", "PSP Frontend", null, tempDir.toString(), Instant.now());
+        when(repository.findByActiveTrue()).thenReturn(Optional.of(current));
+
+        assertThatThrownBy(() -> service.graphifyIndexAtPath(notADirectory.toString()))
+                .isInstanceOf(IllegalArgumentException.class);
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void graphifyIndexCurrentUsesOverridePathOnceOneIsSet(@TempDir Path tempDir) throws java.io.IOException {
+        Path subFolder = java.nio.file.Files.createDirectory(tempDir.resolve("pruserve-backoffice"));
+        ProjectWorkspaceEntity current = new ProjectWorkspaceEntity(
+                "current-id", "PSP Backend", null, tempDir.toString(), Instant.now());
+        current.setGraphifyIndexPath(subFolder.toString());
+        when(repository.findByActiveTrue()).thenReturn(Optional.of(current));
+        when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.graphifyIndexCurrent();
+
+        verify(graphifyIndexService, timeout(2000)).indexCodeOnly(eq(subFolder));
+    }
+
+    @Test
     void removeDeletesTheDeclaredWorkspace(@TempDir Path tempDir) {
         ProjectWorkspaceEntity target = new ProjectWorkspaceEntity(
                 "target-id", "Target Project", null, tempDir.toString(), Instant.now());

@@ -22,6 +22,22 @@ import java.util.stream.Stream;
 @Service
 public class EndpointSequenceDiagramService {
 
+    // Mermaid embeds its own theme-generated <style> block directly inside each
+    // rendered SVG, scoped to that render's id -- that internal stylesheet
+    // structurally outranks any page-level CSS (even with !important), so
+    // frontend styles.css overrides of .noteText/.actor/etc previously had no
+    // effect. Setting theme colors here, via the init directive Mermaid itself
+    // reads, is the only reliable way to control sequence diagram colors.
+    private static final String SEQUENCE_THEME_INIT = "%%{init: {'theme':'base', 'themeVariables': {"
+            + "'background':'#fbfaf6','primaryColor':'#eef8f7','primaryTextColor':'#14242d',"
+            + "'primaryBorderColor':'#246a67','lineColor':'#1b6f74','textColor':'#14242d',"
+            + "'actorBkg':'#eef8f7','actorBorder':'#246a67','actorTextColor':'#14242d','actorLineColor':'#374e58',"
+            + "'signalColor':'#1b6f74','signalTextColor':'#14242d','labelBoxBkgColor':'#eef8f7',"
+            + "'labelBoxBorderColor':'#246a67','labelTextColor':'#14242d','loopTextColor':'#14242d',"
+            + "'noteBkgColor':'#fff2cf','noteBorderColor':'#c58c23','noteTextColor':'#14242d',"
+            + "'activationBorderColor':'#46738f','activationBkgColor':'#d7e8f4','sequenceNumberColor':'#14242d'"
+            + "}}}%%\nsequenceDiagram\n";
+
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Pattern LARAVEL_ROUTE = Pattern.compile(
             "Route::(get|post|put|patch|delete|any)\\s*\\(\\s*['\"]([^'\"]+)['\"]\\s*,\\s*\\[\\s*(?:\\\\?App\\\\Http\\\\Controllers\\\\)?([A-Za-z0-9_\\\\]+)::class\\s*,\\s*['\"]([A-Za-z0-9_]+)['\"]\\s*\\]",
@@ -107,7 +123,7 @@ public class EndpointSequenceDiagramService {
         boolean returnsView = containsAny(controllerBody, "view(", "redirect(", "response()->json", "return back(", "return ", "ResponseEntity");
 
         String controllerLabel = shortController(endpoint.controller()) + "." + endpoint.action() + "()";
-        StringBuilder sb = new StringBuilder("sequenceDiagram\n");
+        StringBuilder sb = new StringBuilder(SEQUENCE_THEME_INIT);
         sb.append("  actor Analyst\n");
         sb.append("  participant Browser\n");
         sb.append("  participant Route as ").append(spring ? "Spring MVC Route" : "Laravel Route").append('\n');
@@ -151,7 +167,7 @@ public class EndpointSequenceDiagramService {
 
     private String generateFrontendMermaid(EndpointOption endpoint) {
         String label = endpoint.controller() + "." + endpoint.action() + "()";
-        StringBuilder sb = new StringBuilder("sequenceDiagram\n");
+        StringBuilder sb = new StringBuilder(SEQUENCE_THEME_INIT);
         sb.append("  actor Analyst\n");
         sb.append("  participant UI as React UI\n");
         sb.append("  participant Api as frontend api() helper\n");
@@ -192,7 +208,7 @@ public class EndpointSequenceDiagramService {
                 .toList();
 
         String controllerLabel = shortController(endpoint.controller()) + "." + endpoint.action() + "()";
-        StringBuilder sb = new StringBuilder("sequenceDiagram\n");
+        StringBuilder sb = new StringBuilder(SEQUENCE_THEME_INIT);
         sb.append("  actor Analyst\n");
         sb.append("  participant Browser\n");
         sb.append("  participant Route as ").append(spring ? "Spring MVC Route" : "Laravel Route").append('\n');
