@@ -95,6 +95,21 @@ public class ProjectWorkspaceController {
         return ProjectWorkspaceView.of(service.graphifyIndexCurrent());
     }
 
+    /**
+     * When local_path is a repo root containing several sub-projects (e.g.
+     * frontend + backend), Graphify can't index it directly -- the analyst
+     * picks which sub-folder to index instead. See
+     * ProjectWorkspaceEntity.graphifyIndexPath.
+     */
+    @CrossOrigin(origins = "*")
+    @PostMapping("/current/graphify-index-path")
+    public ProjectWorkspaceView graphifyIndexAtPath(@RequestBody GraphifyIndexPathRequest request) {
+        return ProjectWorkspaceView.of(service.graphifyIndexAtPath(request.path()));
+    }
+
+    public record GraphifyIndexPathRequest(String path) {
+    }
+
     @CrossOrigin(origins = "*")
     @GetMapping("/current/diagram")
     public DiagramView currentDiagram() {

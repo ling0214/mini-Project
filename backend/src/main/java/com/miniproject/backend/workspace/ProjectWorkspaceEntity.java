@@ -55,6 +55,20 @@ public class ProjectWorkspaceEntity {
     @Column(name = "graphify_index_error")
     private String graphifyIndexError;
 
+    /**
+     * Overrides which folder Graphify indexes for the Project Overview
+     * diagram, when it isn't local_path itself -- e.g. local_path is a repo
+     * root containing several sub-projects (frontend/backend), which Graphify
+     * can't index directly (no single supported code root), so the analyst
+     * picks a specific sub-folder instead. Null means "use local_path".
+     * Deliberately independent of local_path: local_path stays the one thing
+     * an analyst declares/switches between projects with, and also drives
+     * Hermes status matching (HermesStatusService.pathsRelated) and the code
+     * graph (indexAsync) — this field only affects the diagram.
+     */
+    @Column(name = "graphify_index_path")
+    private String graphifyIndexPath;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -107,6 +121,15 @@ public class ProjectWorkspaceEntity {
         this.graphifyIndexError = truncateError(error);
     }
 
+    public void setGraphifyIndexPath(String path) {
+        this.graphifyIndexPath = path;
+    }
+
+    /** The folder Graphify actually indexes -- graphifyIndexPath if the analyst picked one, else localPath. */
+    public String getEffectiveGraphifyIndexPath() {
+        return graphifyIndexPath == null || graphifyIndexPath.isBlank() ? localPath : graphifyIndexPath;
+    }
+
     public void deactivate() {
         this.active = false;
     }
@@ -150,6 +173,10 @@ public class ProjectWorkspaceEntity {
 
     public String getGraphifyIndexError() {
         return graphifyIndexError;
+    }
+
+    public String getGraphifyIndexPath() {
+        return graphifyIndexPath;
     }
 
     public Instant getCreatedAt() {

@@ -66,9 +66,9 @@ public class ProjectWorkspaceService {
     public ProjectWorkspaceEntity graphifyIndexCurrent() {
         ProjectWorkspaceEntity target = repository.findByActiveTrue()
                 .orElseThrow(() -> new IllegalArgumentException("No active project workspace"));
-        Path path = Path.of(target.getLocalPath());
+        Path path = Path.of(target.getEffectiveGraphifyIndexPath());
         if (!Files.isDirectory(path)) {
-            throw new IllegalArgumentException("localPath no longer exists: " + target.getLocalPath());
+            throw new IllegalArgumentException("Path no longer exists: " + path);
         }
 
         if (graphifyIndexService.hasGraphOutput(path)) {
@@ -76,6 +76,34 @@ public class ProjectWorkspaceService {
             return repository.save(target);
         }
 
+        target.markGraphifyIndexing();
+        ProjectWorkspaceEntity saved = repository.save(target);
+        runningGraphifyWorkspaceIds.add(saved.getId());
+        graphifyIndexAsync(saved.getId(), path);
+        return saved;
+    }
+
+    /**
+     * Analyst-picked override for which folder Graphify indexes, used when
+     * local_path itself isn't a single indexable codebase (a repo root
+     * containing several sub-projects) — see ProjectWorkspaceEntity.graphifyIndexPath.
+     * subPath isn't required to be inside local_path: the analyst is the one
+     * who knows which sibling/child folder is the real frontend or backend
+     * root, this only re-triggers indexing against whatever they picked.
+     */
+    @Transactional
+    public ProjectWorkspaceEntity graphifyIndexAtPath(String subPath) {
+        if (subPath == null || subPath.isBlank()) {
+            throw new IllegalArgumentException("path is required");
+        }
+        ProjectWorkspaceEntity target = repository.findByActiveTrue()
+                .orElseThrow(() -> new IllegalArgumentException("No active project workspace"));
+        Path path = Path.of(subPath.trim());
+        if (!Files.isDirectory(path)) {
+            throw new IllegalArgumentException("Not a directory: " + path);
+        }
+
+        target.setGraphifyIndexPath(path.toString());
         target.markGraphifyIndexing();
         ProjectWorkspaceEntity saved = repository.save(target);
         runningGraphifyWorkspaceIds.add(saved.getId());
@@ -212,7 +240,7 @@ public class ProjectWorkspaceService {
         if ("ready".equals(entity.getGraphifyIndexStatus())) {
             return;
         }
-        Path path = Path.of(entity.getLocalPath());
+        Path path = Path.of(entity.getEffectiveGraphifyIndexPath());
         if (Files.isDirectory(path) && graphifyIndexService.hasGraphOutput(path)) {
             entity.markGraphifyIndexReady();
             repository.save(entity);
