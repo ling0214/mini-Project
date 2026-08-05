@@ -1209,7 +1209,7 @@ button {
 }
 
 .project-control-switchboard .field-label {
-  color: #72e4dc;
+  color: #124700;
 }
 
 .hermes-setup-embedded {
@@ -1248,6 +1248,82 @@ button {
   border-color: rgba(114, 228, 220, 0.34);
   border-left-color: #72e4dc;
   background: rgba(114, 228, 220, 0.09);
+}
+
+.project-subpath-panel {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+  padding: 0.75rem;
+  border: 1px dashed rgba(232, 244, 244, 0.22);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.project-subpath-panel .field-hint {
+  margin: 0;
+  color: rgba(234, 246, 245, 0.65);
+}
+
+.project-subpath-list {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.project-subpath-list li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.6rem;
+  align-items: center;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid rgba(232, 244, 244, 0.14);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.project-subpath-list li strong {
+  color: #eaf6f5;
+  font-size: 0.85rem;
+}
+
+.project-subpath-list li span {
+  min-width: 0;
+  color: rgba(234, 246, 245, 0.6);
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-subpath-add-row {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr auto auto;
+  gap: 0.5rem;
+}
+
+.project-subpath-add-row input {
+  min-width: 0;
+  height: 2.1rem;
+  border-radius: 9px;
+  border: 1px solid rgba(232, 244, 244, 0.22);
+  background: rgba(255, 255, 255, 0.06);
+  color: #eaf6f5;
+  padding: 0 0.6rem;
+  font-size: 0.82rem;
+}
+
+.project-subpath-add-row input::placeholder {
+  color: rgba(234, 246, 245, 0.4);
+}
+
+@media (max-width: 760px) {
+  .project-subpath-add-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .project-switchboard-title {
@@ -5527,6 +5603,11 @@ button {
   color: var(--ink-faint);
 }
 
+.hermes-status-badge.tone-rust {
+  background: var(--rust-soft);
+  color: var(--rust);
+}
+
 .hermes-task-date {
   color: var(--ink-faint);
   font-size: 0.76rem;
@@ -5664,6 +5745,445 @@ button {
 
 .hermes-stage-step.pending .hermes-stage-copy strong {
   color: var(--ink-faint);
+}
+
+/* Production Incidents -- Hermes's own live incident-pipeline dashboard,
+   ported into mini-Project (see ProductionIncidentsPanel / HermesIncidentReader.java).
+   Sits inside the light .tracker-panel shell at the bottom of the Hermes
+   Incident Tracker page, so unlike .hermes-metric-card above (built for the
+   dark hero panel), everything here is styled dark-on-light. */
+
+.prod-incident-panel {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.prod-incident-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.prod-incident-summary-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 84px;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #ffffff;
+  text-align: left;
+  transition: transform 160ms ease, border-color 160ms ease;
+}
+
+.prod-incident-summary-card:hover {
+  transform: translateY(-1px);
+  border-color: var(--line-strong);
+}
+
+.prod-incident-summary-icon {
+  display: grid;
+  place-items: center;
+  width: 2.3rem;
+  height: 2.3rem;
+  flex-shrink: 0;
+  border-radius: 11px;
+  background: var(--paper-sunken);
+  color: var(--ink-soft);
+  font-size: 1rem;
+}
+
+.prod-incident-summary-card.accent-amber .prod-incident-summary-icon {
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.prod-incident-summary-card.accent-teal .prod-incident-summary-icon {
+  background: var(--teal-soft);
+  color: var(--teal);
+}
+
+.prod-incident-summary-card.accent-rust .prod-incident-summary-icon {
+  background: var(--rust-soft);
+  color: var(--rust);
+}
+
+.prod-incident-summary-card strong {
+  display: block;
+  color: var(--ink);
+  font-size: 1.35rem;
+  line-height: 1.1;
+}
+
+.prod-incident-summary-card span {
+  display: block;
+  margin-top: 0.1rem;
+  color: var(--ink-faint);
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.prod-incident-filters {
+  display: grid;
+  grid-template-columns: 1.4fr 0.9fr 0.9fr 1fr auto;
+  gap: 0.6rem;
+  align-items: end;
+  padding: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper-sunken);
+}
+
+.prod-incident-filter-field {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.prod-incident-filter-field span {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.prod-incident-filter-field input,
+.prod-incident-filter-field select {
+  min-width: 0;
+  height: 2.2rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: #ffffff;
+  color: var(--ink);
+  padding: 0 0.6rem;
+  font-size: 0.85rem;
+}
+
+.prod-incident-active-filter {
+  margin: 0;
+  padding: 0.5rem 0.7rem;
+  border-radius: 10px;
+  border: 1px solid var(--rust-soft);
+  color: var(--rust);
+  background: var(--rust-soft);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.prod-incident-list-summary {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--ink-faint);
+}
+
+.prod-incident-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(360px, 1.3fr);
+  gap: 0.9rem;
+  align-items: start;
+}
+
+.prod-incident-list {
+  display: grid;
+  gap: 0.6rem;
+  max-height: 640px;
+  overflow: auto;
+  padding-right: 0.2rem;
+}
+
+.prod-incident-row {
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 0.85rem;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.prod-incident-row:hover,
+.prod-incident-row.active {
+  border-color: var(--teal);
+  background: var(--teal-soft);
+}
+
+.prod-incident-row-top {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 0.6rem;
+  align-items: start;
+}
+
+.prod-incident-row-title {
+  font-weight: 750;
+  font-size: 0.9rem;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prod-incident-row-message {
+  margin-top: 0.15rem;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prod-incident-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.55rem;
+  font-size: 0.74rem;
+  color: var(--ink-faint);
+}
+
+.prod-incident-pipeline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+}
+
+.prod-incident-pipeline-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.45rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+  background: var(--paper-sunken);
+}
+
+.prod-incident-pipeline-step.tone-teal {
+  border-color: var(--teal);
+  color: var(--teal-strong);
+  background: var(--teal-soft);
+}
+
+.prod-incident-pipeline-step.tone-amber {
+  border-color: var(--amber);
+  color: var(--amber);
+  background: var(--amber-soft);
+}
+
+.prod-incident-pipeline-step.tone-rust {
+  border-color: var(--rust);
+  color: var(--rust);
+  background: var(--rust-soft);
+}
+
+.prod-incident-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  border: 1px solid currentColor;
+  line-height: 1;
+}
+
+.prod-incident-icon.tone-teal {
+  color: var(--teal);
+  background: var(--teal-soft);
+}
+
+.prod-incident-icon.tone-amber {
+  color: var(--amber);
+  background: var(--amber-soft);
+}
+
+.prod-incident-icon.tone-rust {
+  color: var(--rust);
+  background: var(--rust-soft);
+}
+
+.prod-incident-icon.tone-muted {
+  color: var(--ink-faint);
+  background: var(--paper-sunken);
+}
+
+.prod-incident-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 2px solid var(--amber-soft);
+  border-top-color: var(--amber);
+  animation: prod-incident-spin 0.8s linear infinite;
+}
+
+@keyframes prod-incident-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.prod-incident-detail {
+  padding: 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #ffffff;
+  min-height: 480px;
+}
+
+.prod-incident-empty-detail {
+  display: grid;
+  place-content: center;
+  text-align: center;
+  gap: 0.4rem;
+}
+
+.prod-incident-detail-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 0.9rem;
+}
+
+.prod-incident-detail-titleline {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 0.5rem;
+  align-items: start;
+}
+
+.prod-incident-detail-header h2 {
+  margin: 0 0 0.3rem;
+  font-size: 1.2rem;
+  color: var(--ink);
+}
+
+.prod-incident-detail-header p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+}
+
+.prod-incident-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.prod-incident-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.6rem;
+  padding: 0.8rem;
+  border-radius: 12px;
+  background: var(--paper-sunken);
+  margin: 0.8rem 0 1rem;
+}
+
+.prod-incident-detail-grid span {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--ink-faint);
+  margin-bottom: 0.2rem;
+}
+
+.prod-incident-detail-grid strong {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--ink);
+  word-break: break-word;
+}
+
+.prod-incident-warning {
+  margin: 0 0 1rem;
+  padding: 0.75rem;
+  border: 1px solid var(--rust-soft);
+  border-radius: 12px;
+  background: var(--rust-soft);
+  color: var(--rust);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.prod-incident-timeline {
+  display: grid;
+  gap: 0.6rem;
+  max-height: 360px;
+  overflow: auto;
+  padding-right: 0.2rem;
+}
+
+.prod-incident-timeline-row {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 0.5rem;
+  align-items: start;
+}
+
+.prod-incident-timeline-title {
+  font-weight: 700;
+  font-size: 0.82rem;
+  color: var(--ink);
+}
+
+.prod-incident-timeline-msg {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+
+.prod-incident-timeline-meta {
+  margin-top: 0.15rem;
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+}
+
+.prod-incident-timeline-meta code {
+  padding: 0.05rem 0.3rem;
+  border-radius: 5px;
+  background: var(--paper-sunken);
+  color: var(--ink);
+}
+
+.prod-incident-timeline-time {
+  margin-top: 0.1rem;
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+}
+
+@media (max-width: 1150px) {
+  .prod-incident-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .prod-incident-detail-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .prod-incident-summary-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .prod-incident-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .prod-incident-summary-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .prototype-memory-grid {
@@ -11728,6 +12248,33 @@ textarea:focus-visible {
   background: rgba(248, 251, 252, 0.94);
 }
 
+.project-scope-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.7rem;
+  padding: 0.6rem 0.85rem;
+  border: 1px dashed var(--line-strong);
+  border-radius: 12px;
+  background: var(--paper-sunken);
+}
+
+.project-scope-picker .field-label {
+  margin: 0;
+}
+
+.project-scope-picker select {
+  min-width: 180px;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #ffffff;
+  color: var(--ink);
+  padding: 0 0.6rem;
+  font-size: 0.85rem;
+}
+
 .overview-toolbar-endpoint {
   display: flex;
   flex-wrap: wrap;
@@ -11827,6 +12374,28 @@ textarea:focus-visible {
 .overview-summary-source code {
   color: var(--teal-strong);
   overflow-wrap: anywhere;
+}
+
+.endpoint-framework-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.endpoint-framework-badge.tone-blue {
+  background: rgba(49, 92, 206, 0.12);
+  color: var(--blue);
+}
+
+.endpoint-framework-badge.tone-teal {
+  background: var(--teal-soft);
+  color: var(--teal-strong);
 }
 
 /* Endpoint AI aside used to be position:absolute with a hand-guessed `top`

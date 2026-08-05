@@ -417,9 +417,71 @@ function ConnectProjectScreen({ onConnected, onCancel, onActiveRemoved }) {
   const [browserOpen, setBrowserOpen] = useState(false);
   const [hermesMatchCount, setHermesMatchCount] = useState(null);
 
+  const [subpathsByProject, setSubpathsByProject] = useState({});
+  const [expandedSubpathsProjectId, setExpandedSubpathsProjectId] = useState(null);
+  const [newSubpathLabel, setNewSubpathLabel] = useState("");
+  const [newSubpathPath, setNewSubpathPath] = useState("");
+  const [subpathBrowserOpenFor, setSubpathBrowserOpenFor] = useState(null);
+  const [addingSubpath, setAddingSubpath] = useState(false);
+  const [removingSubpathId, setRemovingSubpathId] = useState(null);
+  const [subpathError, setSubpathError] = useState("");
+
   useEffect(() => {
     loadProjects();
   }, []);
+
+  function loadSubpaths(projectId) {
+    api(`/api/workspace/${projectId}/subpaths`)
+      .then((rows) => setSubpathsByProject((prev) => ({ ...prev, [projectId]: rows })))
+      .catch(() => setSubpathsByProject((prev) => ({ ...prev, [projectId]: [] })));
+  }
+
+  function toggleSubpaths(projectId) {
+    if (expandedSubpathsProjectId === projectId) {
+      setExpandedSubpathsProjectId(null);
+      return;
+    }
+    setExpandedSubpathsProjectId(projectId);
+    setNewSubpathLabel("");
+    setNewSubpathPath("");
+    setSubpathError("");
+    loadSubpaths(projectId);
+  }
+
+  async function addSubpath(projectId) {
+    if (!newSubpathLabel.trim() || !newSubpathPath.trim()) {
+      setSubpathError("Label and path are required.");
+      return;
+    }
+    setSubpathError("");
+    setAddingSubpath(true);
+    try {
+      await api(`/api/workspace/${projectId}/subpaths`, {
+        method: "POST",
+        body: { label: newSubpathLabel.trim(), path: newSubpathPath.trim() },
+      });
+      setNewSubpathLabel("");
+      setNewSubpathPath("");
+      loadSubpaths(projectId);
+    } catch (err) {
+      setSubpathError(err.message);
+    } finally {
+      setAddingSubpath(false);
+    }
+  }
+
+  async function removeSubpath(projectId, subpathId) {
+    setSubpathError("");
+    setRemovingSubpathId(subpathId);
+    try {
+      await api(`/api/workspace/${projectId}/subpaths/${subpathId}`, { method: "DELETE" });
+      loadSubpaths(projectId);
+    } catch (err) {
+      setSubpathError(err.message);
+    } finally {
+      setRemovingSubpathId(null);
+    }
+  }
 
   // Debounced: as the analyst types/browses to a path, check whether Hermes
   // already has tracked activity under it (or an ancestor/descendant of it —
@@ -610,6 +672,11 @@ function ConnectProjectScreen({ onConnected, onCancel, onActiveRemoved }) {
                         Switch project
                       </button>
                     )}
+                    <button className="btn ghost compact" type="button" onClick={() => toggleSubpaths(project.id)}>
+                      {expandedSubpathsProjectId === project.id
+                        ? "Hide sub-paths"
+                        : `Sub-paths${subpathsByProject[project.id]?.length ? ` (${subpathsByProject[project.id].length})` : ""}`}
+                    </button>
                     <button
                       className="btn ghost compact danger"
                       type="button"
@@ -619,6 +686,65 @@ function ConnectProjectScreen({ onConnected, onCancel, onActiveRemoved }) {
                       {removingId === project.id ? "Removing..." : "Remove"}
                     </button>
                   </div>
+
+                  {expandedSubpathsProjectId === project.id && (
+                    <div className="project-subpath-panel">
+                      <p className="field-hint">
+                        Name the frontend/backend/admin folders inside this project so Project Overview and endpoint
+                        tracing can target each one individually — leave empty to keep treating this project as one
+                        folder.
+                      </p>
+                      {(subpathsByProject[project.id] || []).length > 0 && (
+                        <ul className="project-subpath-list">
+                          {subpathsByProject[project.id].map((sp) => (
+                            <li key={sp.id}>
+                              <strong>{sp.label}</strong>
+                              <span>{sp.path}</span>
+                              <button
+                                className="btn ghost compact danger"
+                                type="button"
+                                disabled={removingSubpathId === sp.id}
+                                onClick={() => removeSubpath(project.id, sp.id)}
+                              >
+                                {removingSubpathId === sp.id ? "Removing..." : "Remove"}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      <div className="project-subpath-add-row">
+                        <input
+                          type="text"
+                          value={newSubpathLabel}
+                          onChange={(event) => setNewSubpathLabel(event.target.value)}
+                          placeholder="e.g. Frontend"
+                        />
+                        <input
+                          type="text"
+                          value={newSubpathPath}
+                          onChange={(event) => setNewSubpathPath(event.target.value)}
+                          placeholder="C:/path/to/frontend"
+                        />
+                        <button className="btn ghost compact" type="button" onClick={() => setSubpathBrowserOpenFor(project.id)}>
+                          Browse…
+                        </button>
+                        <button className="btn primary compact" type="button" disabled={addingSubpath} onClick={() => addSubpath(project.id)}>
+                          {addingSubpath ? "Adding..." : "Add"}
+                        </button>
+                      </div>
+                      {subpathError && <ErrorBox message={subpathError} />}
+                    </div>
+                  )}
+                  {subpathBrowserOpenFor === project.id && (
+                    <FolderBrowserModal
+                      initialPath={newSubpathPath}
+                      onSelect={(path) => {
+                        setNewSubpathPath(path);
+                        setSubpathBrowserOpenFor(null);
+                      }}
+                      onClose={() => setSubpathBrowserOpenFor(null)}
+                    />
+                  )}
                 </article>
               ))}
             </div>
@@ -661,50 +787,6 @@ function ConnectProjectScreen({ onConnected, onCancel, onActiveRemoved }) {
           </div>
           <HermesSetupWizardPage workspace={activeProject} embedded />
         </section>
-
-        {/* {projects.length > 0 && (
-          <section className="project-control-switchboard">
-            <div className="project-process-board-head">
-              <div>
-                <label className="field-label">Project switchboard</label>
-                <p>Switch the active repo used by Repo AI, project overview, impact analysis, and ticket status tracking.</p>
-              </div>
-              <span>{projects.length} project{projects.length === 1 ? "" : "s"}</span>
-            </div>
-            <div className="project-switchboard-grid">
-              {projects.map((project) => (
-                <article key={project.id} className={project.active ? "active" : ""}>
-                  <div>
-                    <div className="project-switchboard-title">
-                      <strong>{project.name}</strong>
-                      {project.active && <span className="tag good">Active</span>}
-                    </div>
-                    <span>{project.local_path}</span>
-                    <small>
-                      Code graph: {indexStatusLabel(project.index_status, project.index_error)} | Diagram graph:{" "}
-                      {indexStatusLabel(project.graphify_index_status, project.graphify_index_error)}
-                    </small>
-                  </div>
-                  <div className="project-switchboard-actions">
-                    {!project.active && (
-                      <button className="btn ghost compact" type="button" disabled={loading} onClick={() => activate(project.id)}>
-                        Switch project
-                      </button>
-                    )}
-                    <button
-                      className="btn ghost compact danger"
-                      type="button"
-                      disabled={removingId === project.id}
-                      onClick={() => remove(project)}
-                    >
-                      {removingId === project.id ? "Removing..." : "Remove"}
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
-        )} */}
 
       </section>
     </main>
@@ -1316,13 +1398,52 @@ function ProjectOverviewScreen({ workspace, onWorkspaceUpdated, onBack, onSwitch
   const [diagramCopyStatus, setDiagramCopyStatus] = useState("");
   const [sequenceView, setSequenceView] = useState("diagram");
 
+  const [subpaths, setSubpaths] = useState([]);
+  const [selectedSubpathId, setSelectedSubpathId] = useState("");
+  const [subpathIndexing, setSubpathIndexing] = useState(false);
+  const [crossReferenceMode, setCrossReferenceMode] = useState(false);
+  const [crossReferenceLoading, setCrossReferenceLoading] = useState(false);
+  const [crossReferenceError, setCrossReferenceError] = useState("");
+
+  const selectedSubpath = subpaths.find((sp) => sp.id === selectedSubpathId) || null;
+
+  // Named sub-folders (e.g. "Frontend"/"Backend"/"Admin console") the analyst
+  // defined for this project in the Project Control Center switchboard --
+  // lets the diagram/endpoints below target one of them instead of only
+  // ever reading workspace.local_path as a single codebase.
   useEffect(() => {
+    if (!workspace?.id) {
+      setSubpaths([]);
+      setSelectedSubpathId("");
+      return;
+    }
+    let cancelled = false;
+    api(`/api/workspace/${workspace.id}/subpaths`)
+      .then((rows) => {
+        if (!cancelled) setSubpaths(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setSubpaths([]);
+      });
+    setSelectedSubpathId("");
+    return () => {
+      cancelled = true;
+    };
+  }, [workspace?.id]);
+
+  useEffect(() => {
+    if (selectedSubpath && selectedSubpath.index_status !== "ready") {
+      setSvg("");
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     async function load() {
       setLoading(true);
       setError("");
       try {
-        const response = await api("/api/workspace/current/diagram");
+        const query = selectedSubpathId ? `?subpath_id=${encodeURIComponent(selectedSubpathId)}` : "";
+        const response = await api(`/api/workspace/current/diagram${query}`);
         const { svg: rendered } = await mermaid.render("project-overview-diagram", response.mermaid);
         if (!cancelled) setSvg(rendered);
       } catch (err) {
@@ -1335,16 +1456,17 @@ function ProjectOverviewScreen({ workspace, onWorkspaceUpdated, onBack, onSwitch
     return () => {
       cancelled = true;
     };
-  }, [workspace?.id, workspace?.index_status]);
+  }, [workspace?.id, workspace?.index_status, selectedSubpathId, selectedSubpath?.index_status]);
 
   useEffect(() => {
     let cancelled = false;
     async function loadEndpoints() {
       try {
-        const items = await api("/api/workspace/current/endpoints");
+        const query = selectedSubpathId ? `?subpath_id=${encodeURIComponent(selectedSubpathId)}` : "";
+        const items = await api(`/api/workspace/current/endpoints${query}`);
         if (cancelled) return;
         setEndpoints(items);
-        setSelectedEndpointId((prev) => prev || items[0]?.id || "");
+        setSelectedEndpointId(items[0]?.id || "");
       } catch {
         if (!cancelled) setEndpoints([]);
       }
@@ -1353,9 +1475,17 @@ function ProjectOverviewScreen({ workspace, onWorkspaceUpdated, onBack, onSwitch
     return () => {
       cancelled = true;
     };
-  }, [workspace?.id]);
+  }, [workspace?.id, selectedSubpathId]);
 
-  useEffect(() => {
+  // Both the normal per-endpoint diagram load below and the cross-reference
+  // action write to the same sequenceSvg -- a shared "latest request wins"
+  // counter keeps a slow cross-reference fetch from clobbering a diagram the
+  // analyst already navigated away from (and vice versa), same intent as the
+  // effect's own cancelled-flag pattern, just shared across both call sites.
+  const sequenceRequestIdRef = useRef(0);
+
+  async function loadPlainSequence() {
+    const requestId = ++sequenceRequestIdRef.current;
     if (!selectedEndpointId) {
       setSequenceSvg("");
       return;
@@ -1368,27 +1498,73 @@ function ProjectOverviewScreen({ workspace, onWorkspaceUpdated, onBack, onSwitch
       setSequenceLoading(false);
       return;
     }
-    let cancelled = false;
-    async function loadSequence() {
-      setSequenceLoading(true);
-      setSequenceError("");
-      try {
-        const response = await api(
-          `/api/workspace/current/endpoints/sequence?endpointId=${encodeURIComponent(selectedEndpointId)}&engine=${sequenceEngine}`
-        );
-        const { svg: rendered } = await mermaid.render(`endpoint-sequence-${Date.now()}`, response.mermaid);
-        if (!cancelled) setSequenceSvg(rendered);
-      } catch (err) {
-        if (!cancelled) setSequenceError(err.message);
-      } finally {
-        if (!cancelled) setSequenceLoading(false);
-      }
+    setSequenceLoading(true);
+    setSequenceError("");
+    try {
+      const subpathParam = selectedSubpathId ? `&subpath_id=${encodeURIComponent(selectedSubpathId)}` : "";
+      const response = await api(
+        `/api/workspace/current/endpoints/sequence?endpointId=${encodeURIComponent(selectedEndpointId)}&engine=${sequenceEngine}${subpathParam}`
+      );
+      const { svg: rendered } = await mermaid.render(`endpoint-sequence-${Date.now()}`, response.mermaid);
+      if (requestId === sequenceRequestIdRef.current) setSequenceSvg(rendered);
+    } catch (err) {
+      if (requestId === sequenceRequestIdRef.current) setSequenceError(err.message);
+    } finally {
+      if (requestId === sequenceRequestIdRef.current) setSequenceLoading(false);
     }
-    loadSequence();
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedEndpointId, sequenceEngine, workspace?.graphify_index_status, endpoints]);
+  }
+
+  useEffect(() => {
+    setCrossReferenceMode(false);
+    setCrossReferenceError("");
+    loadPlainSequence();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEndpointId, sequenceEngine, workspace?.graphify_index_status, endpoints, selectedSubpathId]);
+
+  async function indexSelectedSubpath() {
+    if (!workspace?.id || !selectedSubpathId) return;
+    setSubpathIndexing(true);
+    try {
+      await api(`/api/workspace/${workspace.id}/subpaths/${selectedSubpathId}/index`, { method: "POST" });
+      const rows = await api(`/api/workspace/${workspace.id}/subpaths`);
+      setSubpaths(rows);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSubpathIndexing(false);
+    }
+  }
+
+  // Works in both directions -- the backend resolves whether the selected
+  // endpoint is frontend or backend and cross-references against whichever
+  // other sub-path has the opposite kind.
+  async function runCrossReference() {
+    if (!selectedEndpointId) return;
+    const requestId = ++sequenceRequestIdRef.current;
+    setCrossReferenceLoading(true);
+    setCrossReferenceError("");
+    try {
+      const subpathParam = selectedSubpathId ? `&subpath_id=${encodeURIComponent(selectedSubpathId)}` : "";
+      const response = await api(
+        `/api/workspace/current/endpoints/cross-reference?endpoint_id=${encodeURIComponent(selectedEndpointId)}${subpathParam}`
+      );
+      const { svg: rendered } = await mermaid.render(`endpoint-cross-ref-${Date.now()}`, response.mermaid);
+      if (requestId === sequenceRequestIdRef.current) {
+        setSequenceSvg(rendered);
+        setCrossReferenceMode(true);
+      }
+    } catch (err) {
+      if (requestId === sequenceRequestIdRef.current) setCrossReferenceError(err.message);
+    } finally {
+      if (requestId === sequenceRequestIdRef.current) setCrossReferenceLoading(false);
+    }
+  }
+
+  function backToOwnView() {
+    setCrossReferenceMode(false);
+    setCrossReferenceError("");
+    loadPlainSequence();
+  }
 
   useEffect(() => {
     setEndpointAiMessages([]);
@@ -1890,6 +2066,35 @@ function ProjectOverviewScreen({ workspace, onWorkspaceUpdated, onBack, onSwitch
               {diagramCopyStatus && <span className="diagram-copy-status">{diagramCopyStatus}</span>}
             </div>
           </div>
+          {subpaths.length > 0 && (
+            <div className="project-scope-picker">
+              <label className="field-label" htmlFor="subpath-scope-select">
+                Scope
+              </label>
+              <select
+                id="subpath-scope-select"
+                value={selectedSubpathId}
+                onChange={(event) => setSelectedSubpathId(event.target.value)}
+              >
+                <option value="">Whole project</option>
+                {subpaths.map((sp) => (
+                  <option key={sp.id} value={sp.id}>
+                    {sp.label}
+                  </option>
+                ))}
+              </select>
+              {selectedSubpath && (
+                <span className={`index-status-tag ${selectedSubpath.index_status || "not_indexed"}`}>
+                  {indexStatusLabel(selectedSubpath.index_status, selectedSubpath.index_error)}
+                </span>
+              )}
+              {selectedSubpath && selectedSubpath.index_status !== "ready" && activeMap !== "sequence" && (
+                <button className="btn primary compact" type="button" disabled={subpathIndexing} onClick={indexSelectedSubpath}>
+                  {subpathIndexing || selectedSubpath.index_status === "indexing" ? "Indexing..." : "Index this sub-path"}
+                </button>
+              )}
+            </div>
+          )}
           {activeMap === "sequence" && (
             <div className="overview-toolbar">
               <div className="overview-toolbar-endpoint">
@@ -1907,6 +2112,27 @@ function ProjectOverviewScreen({ workspace, onWorkspaceUpdated, onBack, onSwitch
                     </option>
                   ))}
                 </select>
+                {selectedEndpoint && (
+                  <span className={`endpoint-framework-badge ${selectedEndpoint.framework === "frontend" ? "tone-blue" : "tone-teal"}`}>
+                    {selectedEndpoint.framework === "frontend" ? "Frontend" : "Backend"}
+                  </span>
+                )}
+                {selectedEndpoint && subpaths.length > 0 && (
+                  <button
+                    className="btn ghost compact"
+                    type="button"
+                    disabled={crossReferenceLoading}
+                    onClick={crossReferenceMode ? backToOwnView : runCrossReference}
+                  >
+                    {crossReferenceLoading
+                      ? "Tracing..."
+                      : crossReferenceMode
+                        ? `← Back to ${selectedEndpoint.framework === "frontend" ? "frontend" : "backend"} view`
+                        : selectedEndpoint.framework === "frontend"
+                          ? "See backend endpoint"
+                          : "See frontend caller"}
+                  </button>
+                )}
                 <div className="endpoint-method-filter" aria-label="Endpoint method summary">
                   {["GET", "POST", "PUT", "PATCH", "DELETE"].map((method) => (
                     <span key={method} className={endpointMethodCounts[method] ? "active" : ""}>
@@ -1962,7 +2188,11 @@ function ProjectOverviewScreen({ workspace, onWorkspaceUpdated, onBack, onSwitch
             </span>
             <span>
               <b>Framework</b>
-              {endpointSummary.framework}
+              {endpointSummary.framework && (
+                <span className={`endpoint-framework-badge ${endpointSummary.framework === "frontend" ? "tone-blue" : "tone-teal"}`}>
+                  {endpointSummary.framework === "frontend" ? "Frontend" : endpointSummary.framework}
+                </span>
+              )}
             </span>
             <span>
               <b>Analysis</b>
@@ -2063,6 +2293,15 @@ function ProjectOverviewScreen({ workspace, onWorkspaceUpdated, onBack, onSwitch
               {endpoints.length === 0 && <ErrorBox message="No supported backend routes or frontend API calls found for this project." />}
               {sequenceLoading && <p className="muted-note">Generating endpoint sequence...</p>}
               {sequenceError && <ErrorBox message={sequenceError} />}
+              {crossReferenceError && <ErrorBox message={crossReferenceError} />}
+              {crossReferenceMode && (
+                <p className="muted-note">
+                  {selectedEndpoint?.framework === "frontend"
+                    ? "Showing the real backend controller this call hits"
+                    : "Showing the real frontend call site that hits this route"}
+                  {" — click “← Back” above, or pick a different endpoint, to return to its own view."}
+                </p>
+              )}
               {!sequenceLoading && !sequenceError && sequenceSvg && (
                 sequenceView === "archify" ? renderArchifyView() : renderDiagram(sequenceSvg, "sequence-canvas")
               )}
@@ -2610,22 +2849,22 @@ function AnalystWorkflowRail({
             onClick={() => onOpenPrototype("hermes-tracker")}
           >
             <span>Hermes Incident Tracker</span>
-            <small>Follow handoff status</small>
+            <small>Check Incident Progress</small>
           </button>
-          {/* <button
+          <button
             className={phase === "hermes-version-advisor" ? "active" : ""}
             type="button"
             onClick={() => onOpenPrototype("hermes-version-advisor")}
           >
             <span>Hermes Version Control</span>
             <small>Which upstream commit to adopt</small>
-          </button> */}
+          </button>
           <button
             className={phase === "hermes-trending-digest" ? "active" : ""}
             type="button"
             onClick={() => onOpenPrototype("hermes-trending-digest")}
           >
-            <span>Trending Digest</span>
+            <span> Project Trending  </span>
             <small>Weekly GitHub Trending scan</small>
           </button>
           <button
@@ -2641,7 +2880,7 @@ function AnalystWorkflowRail({
           </button>
         </div>
       </div>
-      <div className="rail-section rail-workspace-nav-section">
+      {/* <div className="rail-section rail-workspace-nav-section">
         <div className="rail-label">Enhancement Lab</div>
         <div className="rail-nav compact">
           {ENHANCEMENT_TOOLS.map(([id, label, caption]) => (
@@ -2656,12 +2895,12 @@ function AnalystWorkflowRail({
             </button>
           ))}
         </div>
-      </div>
-      <div className="rail-current-card">
+      </div> */}
+      {/* <div className="rail-current-card">
         <span>Current work</span>
         <strong>{selectedTicket.ticketKey || selectedTicket.ticketTitle || (phase === "inbox" ? "Inbox" : "Analysis")}</strong>
         <small>{reqStatus ? formatStatus(reqStatus) : impactReviewed ? "Impact reviewed" : testCount > 0 ? `${testCount} test set${testCount === 1 ? "" : "s"}` : "No ticket selected"}</small>
-      </div>
+      </div> */}
       <div className="rail-label">Analyst Workflow</div>
       {WORKFLOW_STEPS.map(([id, label], index) => {
         const state = index < currentIndex ? "complete" : index === currentIndex ? "active" : "";
@@ -5402,6 +5641,10 @@ function HermesTrackerPrototype({ workspace, onBack }) {
           );
         })}
       </div>
+
+      <div className="tracker-panel" style={{ marginTop: "1.5rem" }}>
+        <ProductionIncidentsPanel />
+      </div>
     </section>
   );
 }
@@ -5411,6 +5654,554 @@ function hermesStatusTone(status) {
   if (status === "Testing decision") return "blue";
   if (status === "Developer update" || status === "Hermes accepted") return "amber";
   return "muted";
+}
+
+// Production Incidents: a Java+React port of Hermes's own
+// plugins/incident-dashboard dashboard (see HermesIncidentReader.java on the
+// backend) — Hermes's real email-triggered incident pipeline, read straight
+// from its incident JSON files. This is a separate thing from the handoff
+// tracker above it on this page: that one tracks packages *mini-Project*
+// sent to Hermes; this one shows what Hermes is doing entirely on its own.
+
+const HERMES_HOME_STORAGE_KEY = "mini-project.hermes-home";
+
+const PRODUCTION_INCIDENT_PIPELINE = [
+  { key: "email", label: "Email", stages: ["email-intake"] },
+  { key: "log", label: "Log", stages: ["log-lookup"] },
+  { key: "unzip", label: "Unzip", stages: ["log-extraction"] },
+  { key: "analysis", label: "Analysis", stages: ["log-analysis", "debug-pipeline"] },
+  { key: "rca", label: "RCA", stages: ["rca-review", "claude-rca", "root-cause-analysis", "rca-draft"] },
+  { key: "code", label: "Code", stages: ["agent-code", "code-rca", "frontend-analysis", "backend-analysis"] },
+];
+
+const PRODUCTION_INCIDENT_STAGE_LABELS = {
+  "email-intake": "Email intake",
+  "log-date-detection": "Date detection",
+  "log-lookup": "Log lookup",
+  "debug-pipeline": "Debug pipeline",
+  "log-extraction": "Safe unzip",
+  "log-analysis": "Python log analysis",
+  "similar-issue-check": "RAG similar issue",
+  "agent-dispatch": "Agent dispatch",
+  "rca-review": "RCA review",
+  "rca-draft": "RCA draft",
+  "root-cause-analysis": "Root cause analysis",
+  "code-rca": "Code / Claude RCA",
+  "agent-code": "Agent Code",
+  "frontend-analysis": "Frontend analysis",
+  "backend-analysis": "Backend analysis",
+  "vpms-analysis": "VPMS evidence",
+  "incident-control": "Incident control",
+  resume: "Resume",
+};
+
+function productionIncidentStageLabel(stage) {
+  return PRODUCTION_INCIDENT_STAGE_LABELS[stage] || stage || "Unknown";
+}
+
+function normalizeIncidentStatus(status) {
+  return String(status || "").toLowerCase();
+}
+
+function productionIncidentStatusTone(status) {
+  const normalized = normalizeIncidentStatus(status);
+  if (normalized === "completed") return "teal";
+  if (normalized === "running" || normalized === "stale" || normalized === "paused" || normalized === "blocked") return "amber";
+  if (normalized === "failed") return "rust";
+  return "muted";
+}
+
+function latestPipelineStageStatus(incident, step) {
+  const history = Array.isArray(incident.history) ? incident.history : [];
+  let found = null;
+  history.forEach((item) => {
+    if (step.stages.includes(item.stage)) found = item;
+  });
+  const status = found ? normalizeIncidentStatus(found.status) : "";
+  const incidentStopped = normalizeIncidentStatus(incident.status) === "stopped" || incident.stop_requested;
+  if (incidentStopped && status !== "completed") return "stopped";
+  if (incident.is_stale && status === "running") return "stale";
+  const incidentSkipped = ["skipped", "duplicate"].includes(normalizeIncidentStatus(incident.status));
+  if (incidentSkipped && status !== "completed") return "skipped";
+  const hasFinalRca = history.some(
+    (item) => ["rca-review", "claude-rca", "code-rca", "root-cause-analysis"].includes(item.stage) && normalizeIncidentStatus(item.status) === "completed",
+  );
+  if (hasFinalRca && status === "running") return "completed";
+  return status;
+}
+
+function productionIncidentOverallStatus(incident) {
+  const statuses = PRODUCTION_INCIDENT_PIPELINE.map((step) => latestPipelineStageStatus(incident, step)).filter(Boolean);
+  if (normalizeIncidentStatus(incident.status) === "stopped" || incident.stop_requested) return "stopped";
+  if (incident.is_stale) return "stale";
+  if (["skipped", "duplicate"].includes(normalizeIncidentStatus(incident.status))) return "skipped";
+  if (statuses.includes("failed")) return "failed";
+  if (statuses.includes("blocked") || statuses.includes("paused")) return "blocked";
+  const history = Array.isArray(incident.history) ? incident.history : [];
+  const hasFinalRca = history.some(
+    (item) => ["rca-review", "claude-rca", "code-rca", "root-cause-analysis"].includes(item.stage) && normalizeIncidentStatus(item.status) === "completed",
+  );
+  if (hasFinalRca) return "completed";
+  if (statuses.includes("running")) return "running";
+  if (statuses.some((s) => s === "completed")) return "running";
+  return normalizeIncidentStatus(incident.status);
+}
+
+function productionIncidentHasAttention(incident) {
+  const status = normalizeIncidentStatus(incident.status);
+  const text = [incident.message, incident.error, incident.stage, incident.status].join(" ").toLowerCase();
+  if (incident.is_stale) return true;
+  if (["failed", "blocked", "paused", "stale"].includes(status)) return true;
+  if (text.includes("failed") || text.includes("not found")) return true;
+  if (text.includes("evidence not enough") || text.includes("returned no usable output")) return true;
+  const history = Array.isArray(incident.history) ? incident.history : [];
+  return history.some((h) => {
+    const s = normalizeIncidentStatus(h.status);
+    const m = String(h.message || "").toLowerCase();
+    return ["failed", "blocked", "paused"].includes(s) || m.includes("failed") || m.includes("not found") || m.includes("evidence not enough");
+  });
+}
+
+function incidentDateValue(value) {
+  if (!value) return "";
+  try {
+    const d = new Date(value);
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${d.getFullYear()}-${mm}-${dd}`;
+  } catch {
+    return "";
+  }
+}
+
+function incidentFilename(path) {
+  return path ? String(path).split(/[\\/]/).pop() : "-";
+}
+
+function uniqueSorted(items, getter) {
+  const seen = new Set();
+  const out = [];
+  items.forEach((item) => {
+    const value = getter(item);
+    if (!value || seen.has(value)) return;
+    seen.add(value);
+    out.push(value);
+  });
+  return out.sort();
+}
+
+function incidentMatchesFilters(incident, filters) {
+  if (filters.date && incidentDateValue(incident.updated_at) !== filters.date) return false;
+  if (filters.status && productionIncidentOverallStatus(incident) !== filters.status) return false;
+  if (filters.stage && String(incident.stage || "") !== filters.stage) return false;
+  if (filters.attention && !productionIncidentHasAttention(incident)) return false;
+  if (filters.query) {
+    const q = filters.query.toLowerCase();
+    const haystack = [incident.incident_key, incident.message, incident.current_agent, incident.current_log, incident.stage, incident.status]
+      .join(" ")
+      .toLowerCase();
+    if (!haystack.includes(q)) return false;
+  }
+  return true;
+}
+
+function IncidentStatusIcon({ status }) {
+  const normalized = normalizeIncidentStatus(status);
+  if (normalized === "running") return <span className="prod-incident-spinner" title="Running" />;
+  if (normalized === "stale") return <span className="prod-incident-icon tone-amber" title="Stale running task">!</span>;
+  if (normalized === "completed") return <span className="prod-incident-icon tone-teal" title="Completed">✓</span>;
+  if (normalized === "failed") return <span className="prod-incident-icon tone-rust" title="Failed">!</span>;
+  if (normalized === "paused" || normalized === "blocked") return <span className="prod-incident-icon tone-amber" title="Needs attention">!</span>;
+  if (normalized === "stopped" || normalized === "cancelled" || normalized === "canceled") return <span className="prod-incident-icon tone-muted" title="Stopped">&#9632;</span>;
+  if (normalized === "skipped" || normalized === "duplicate") return <span className="prod-incident-icon tone-muted" title="Skipped">&#187;</span>;
+  return <span className="prod-incident-icon tone-muted" title="Unknown">&#8226;</span>;
+}
+
+function IncidentPipelineBar({ incident }) {
+  return (
+    <div className="prod-incident-pipeline">
+      {PRODUCTION_INCIDENT_PIPELINE.map((step) => {
+        const status = latestPipelineStageStatus(incident, step);
+        const tone = productionIncidentStatusTone(status);
+        return (
+          <span key={step.key} className={`prod-incident-pipeline-step tone-${tone}`}>
+            <IncidentStatusIcon status={status} />
+            {step.label}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function ProductionIncidentRow({ item, active, onSelect }) {
+  const overallStatus = productionIncidentOverallStatus(item);
+  const tone = productionIncidentStatusTone(overallStatus);
+  return (
+    <button className={`prod-incident-row${active ? " active" : ""}`} type="button" onClick={() => onSelect(item.incident_key)}>
+      <div className="prod-incident-row-top">
+        <IncidentStatusIcon status={overallStatus} />
+        <div className="prod-incident-row-main">
+          <div className="prod-incident-row-title">{item.incident_key || "Incident"}</div>
+          <div className="prod-incident-row-message">{item.message || "-"}</div>
+        </div>
+      </div>
+      <div className="prod-incident-row-meta">
+        <span>{productionIncidentStageLabel(item.stage)}</span>
+        <span className={`hermes-status-badge tone-${tone}`}>{overallStatus}</span>
+        {item.updated_at && <span>{formatRelativeTime(item.updated_at)}</span>}
+      </div>
+      <IncidentPipelineBar incident={item} />
+    </button>
+  );
+}
+
+function ProductionIncidentDetail({ incident, onStop, onContinue, onRetry, stoppingKey, continuingKey, retryingKey }) {
+  if (!incident) {
+    return (
+      <section className="prod-incident-detail prod-incident-empty-detail">
+        <span className="source-pill">Select an incident</span>
+        <p>Click an incident from the list to view its live progress, current log, worker, and history.</p>
+      </section>
+    );
+  }
+  const history = Array.isArray(incident.history) ? incident.history : [];
+  const overallStatus = productionIncidentOverallStatus(incident);
+  const tone = productionIncidentStatusTone(overallStatus);
+  const canStop = !["completed", "failed", "stopped", "cancelled", "canceled"].includes(overallStatus);
+  const canContinue = overallStatus === "stopped" || incident.stop_requested;
+  const canRetry = overallStatus === "failed" || overallStatus === "stale" || incident.is_stale;
+  const isStopping = stoppingKey === incident.incident_key;
+  const isContinuing = continuingKey === incident.incident_key;
+  const isRetrying = retryingKey === incident.incident_key;
+
+  return (
+    <section className="prod-incident-detail">
+      <div className="prod-incident-detail-header">
+        <div>
+          <div className="prod-incident-detail-titleline">
+            <IncidentStatusIcon status={overallStatus} />
+            <h2>{incident.incident_key || "Incident"}</h2>
+          </div>
+          <p>{incident.message || "-"}</p>
+        </div>
+        <div className="prod-incident-detail-actions">
+          <span className={`hermes-status-badge tone-${tone}`}>{overallStatus}</span>
+          {canStop && (
+            <button className="btn ghost compact danger" type="button" disabled={isStopping} onClick={() => onStop(incident.incident_key)}>
+              {isStopping ? "Stopping..." : "Stop"}
+            </button>
+          )}
+          {canContinue && (
+            <button className="btn ghost compact" type="button" disabled={isContinuing} onClick={() => onContinue(incident.incident_key)}>
+              {isContinuing ? "Continuing..." : "Continue"}
+            </button>
+          )}
+          {canRetry && (
+            <button className="btn ghost compact" type="button" disabled={isRetrying} onClick={() => onRetry(incident.incident_key)}>
+              {isRetrying ? "Retrying..." : "Retry"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <IncidentPipelineBar incident={incident} />
+
+      <div className="prod-incident-detail-grid">
+        <div><span>Stage</span><strong>{productionIncidentStageLabel(incident.stage)}</strong></div>
+        <div><span>Worker</span><strong>{incident.current_agent || "-"}</strong></div>
+        <div><span>Log</span><strong>{incidentFilename(incident.current_log)}</strong></div>
+        <div><span>Updated</span><strong>{formatDate(incident.updated_at)}</strong></div>
+        <div><span>Thread ID</span><strong>{incident.thread_id || "-"}</strong></div>
+        <div><span>Target agent</span><strong>{incident.target_agent || "-"}</strong></div>
+        <div><span>Task ID</span><strong>{incident.task_id || "-"}</strong></div>
+        <div><span>RCA report</span><strong>{incidentFilename(incident.rca_code_report || incident.report_path)}</strong></div>
+      </div>
+
+      {incident.error && (
+        <div className="prod-incident-warning">
+          <strong>Note: </strong>
+          {String(incident.error).slice(0, 350)}
+        </div>
+      )}
+
+      <h3>Progress history</h3>
+      <div className="prod-incident-timeline">
+        {history
+          .slice()
+          .reverse()
+          .map((item, index) => (
+            <div className="prod-incident-timeline-row" key={index}>
+              <IncidentStatusIcon status={item.status} />
+              <div>
+                <div className="prod-incident-timeline-title">
+                  {productionIncidentStageLabel(item.stage)} · {item.status || "unknown"}
+                </div>
+                {item.message && <div className="prod-incident-timeline-msg">{item.message}</div>}
+                {item.target_agent && (
+                  <div className="prod-incident-timeline-meta">
+                    Target: <code>{item.target_agent}</code>
+                    {item.task_id && (
+                      <>
+                        {" "}
+                        · Task: <code>{item.task_id}</code>
+                      </>
+                    )}
+                  </div>
+                )}
+                <div className="prod-incident-timeline-time">{formatDate(item.at)}</div>
+              </div>
+            </div>
+          ))}
+      </div>
+    </section>
+  );
+}
+
+function ProductionIncidentsPanel() {
+  const [hermesHome, setHermesHome] = useState(() => {
+    try {
+      return window.localStorage.getItem(HERMES_HOME_STORAGE_KEY) || "";
+    } catch {
+      return "";
+    }
+  });
+  const [incidents, setIncidents] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [selectedKey, setSelectedKey] = useState("");
+  const [filters, setFilters] = useState({ query: "", date: "", status: "", stage: "", attention: false });
+  const [stoppingKey, setStoppingKey] = useState("");
+  const [continuingKey, setContinuingKey] = useState("");
+  const [retryingKey, setRetryingKey] = useState("");
+
+  function updateFilter(key, value) {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function load() {
+    const home = hermesHome.trim();
+    if (!home) return;
+    setLoading(true);
+    setError("");
+    api(`/api/hermes/incidents?hermes_home=${encodeURIComponent(home)}&limit=100`)
+      .then((res) => {
+        const rows = res.incidents || [];
+        setIncidents(rows);
+        setSelectedKey((current) => {
+          if (current && rows.some((x) => x.incident_key === current)) return current;
+          return rows.length ? rows[0].incident_key : "";
+        });
+      })
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(HERMES_HOME_STORAGE_KEY, hermesHome);
+    } catch {
+      // ignore -- private browsing / storage disabled is fine, just no persistence
+    }
+    if (!hermesHome.trim()) {
+      return;
+    }
+    load();
+    const interval = setInterval(load, 5000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hermesHome]);
+
+  function runAction(action, incidentKey, setKey, confirmMessage) {
+    if (!incidentKey) return;
+    if (confirmMessage && !window.confirm(confirmMessage)) return;
+    setKey(incidentKey);
+    api(`/api/hermes/incidents/${encodeURIComponent(incidentKey)}/${action}?hermes_home=${encodeURIComponent(hermesHome.trim())}`, {
+      method: "POST",
+    })
+      .then(() => load())
+      .catch((err) => setError(err.message))
+      .finally(() => setKey(""));
+  }
+
+  const stopIncident = (key) =>
+    runAction("stop", key, setStoppingKey, "Stop this incident pipeline? Current command may finish, but RCA will not continue.");
+  const continueIncidentAction = (key) => runAction("continue", key, setContinuingKey, null);
+  const retryIncident = (key) => runAction("retry", key, setRetryingKey, "Retry this failed incident from log analysis?");
+
+  const statuses = useMemo(() => uniqueSorted(incidents, productionIncidentOverallStatus), [incidents]);
+  const stages = useMemo(() => uniqueSorted(incidents, (x) => x.stage), [incidents]);
+  const dates = useMemo(() => uniqueSorted(incidents, (x) => incidentDateValue(x.updated_at)).reverse(), [incidents]);
+  const filtered = useMemo(() => incidents.filter((x) => incidentMatchesFilters(x, filters)), [incidents, filters]);
+  const selectedIncident = useMemo(
+    () => incidents.find((x) => x.incident_key === selectedKey) || filtered[0] || null,
+    [incidents, filtered, selectedKey],
+  );
+
+  const runningCount = incidents.filter((x) => productionIncidentOverallStatus(x) === "running").length;
+  const attentionCount = incidents.filter(productionIncidentHasAttention).length;
+  const todayCount = incidents.filter((x) => incidentDateValue(x.updated_at) === incidentDateValue(new Date())).length;
+  const completedCount = incidents.filter((x) => productionIncidentOverallStatus(x) === "completed").length;
+
+  return (
+    <div className="prod-incident-panel">
+      <div className="tracker-panel-head">
+        <div>
+          <span className="source-pill">Hermes's own pipeline</span>
+          <h2>Production incidents</h2>
+          <p>
+            Live from Hermes's own email-triggered incident pipeline — read directly from its incident JSON files,
+            independent of anything mini-Project itself handed off.
+          </p>
+        </div>
+        <button className="btn ghost compact" type="button" disabled={loading || !hermesHome.trim()} onClick={load}>
+          {loading ? "Refreshing..." : "Refresh"}
+        </button>
+      </div>
+
+      <label className="field-label">Hermes home directory</label>
+      <input
+        type="text"
+        value={hermesHome}
+        onChange={(event) => setHermesHome(event.target.value)}
+        placeholder="C:/Users/you/AppData/Local/hermes"
+      />
+      <p className="field-hint">
+        The folder that directly contains "incidents" and "agent-tasks" — not the hermes-agent repo checkout, its
+        sibling data folder. Remembered on this device.
+      </p>
+
+      {error && <ErrorBox message={error} />}
+
+      {!hermesHome.trim() && <p className="muted-note">Enter Hermes's home directory above to load its live incident pipeline.</p>}
+
+      {hermesHome.trim() && (
+        <>
+          <div className="prod-incident-summary-grid">
+            <button
+              className="prod-incident-summary-card accent-amber"
+              type="button"
+              onClick={() => setFilters({ query: "", date: "", status: "running", stage: "", attention: false })}
+            >
+              <span className="prod-incident-summary-icon" aria-hidden="true">&#9679;</span>
+              <div>
+                <strong>{runningCount}</strong>
+                <span>Running</span>
+              </div>
+            </button>
+            <button
+              className="prod-incident-summary-card accent-rust"
+              type="button"
+              onClick={() => setFilters({ query: "", date: "", status: "", stage: "", attention: true })}
+            >
+              <span className="prod-incident-summary-icon" aria-hidden="true">&#9888;</span>
+              <div>
+                <strong>{attentionCount}</strong>
+                <span>Needs attention</span>
+              </div>
+            </button>
+            <button
+              className="prod-incident-summary-card"
+              type="button"
+              onClick={() => setFilters({ query: "", date: incidentDateValue(new Date()), status: "", stage: "", attention: false })}
+            >
+              <span className="prod-incident-summary-icon" aria-hidden="true">&#128197;</span>
+              <div>
+                <strong>{todayCount}</strong>
+                <span>Today</span>
+              </div>
+            </button>
+            <button
+              className="prod-incident-summary-card accent-teal"
+              type="button"
+              onClick={() => setFilters({ query: "", date: "", status: "completed", stage: "", attention: false })}
+            >
+              <span className="prod-incident-summary-icon" aria-hidden="true">&#10003;</span>
+              <div>
+                <strong>{completedCount}</strong>
+                <span>Completed</span>
+              </div>
+            </button>
+          </div>
+
+          <div className="prod-incident-filters">
+            <label className="prod-incident-filter-field prod-incident-filter-search">
+              <span>Search</span>
+              <input type="text" value={filters.query} onChange={(event) => updateFilter("query", event.target.value)} placeholder="Ticket, log, worker..." />
+            </label>
+            <label className="prod-incident-filter-field">
+              <span>Date</span>
+              <select value={filters.date} onChange={(event) => updateFilter("date", event.target.value)}>
+                <option value="">All dates</option>
+                {dates.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="prod-incident-filter-field">
+              <span>Status</span>
+              <select value={filters.status} onChange={(event) => updateFilter("status", event.target.value)}>
+                <option value="">All status</option>
+                {statuses.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="prod-incident-filter-field">
+              <span>Stage</span>
+              <select value={filters.stage} onChange={(event) => updateFilter("stage", event.target.value)}>
+                <option value="">All stages</option>
+                {stages.map((s) => (
+                  <option key={s} value={s}>
+                    {productionIncidentStageLabel(s)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="btn ghost compact"
+              type="button"
+              onClick={() => setFilters({ query: "", date: "", status: "", stage: "", attention: false })}
+            >
+              Clear
+            </button>
+          </div>
+          {filters.attention && <p className="prod-incident-active-filter">Showing: Needs attention</p>}
+
+          <p className="prod-incident-list-summary">
+            {filtered.length} of {incidents.length} incidents
+          </p>
+
+          <div className="prod-incident-layout">
+            <div className="prod-incident-list">
+              {!loading && filtered.length === 0 && <p className="muted-note">No incidents match the current filters.</p>}
+              {filtered.map((item) => (
+                <ProductionIncidentRow
+                  key={item.incident_key}
+                  item={item}
+                  active={Boolean(selectedIncident && selectedIncident.incident_key === item.incident_key)}
+                  onSelect={setSelectedKey}
+                />
+              ))}
+            </div>
+            <ProductionIncidentDetail
+              incident={selectedIncident}
+              onStop={stopIncident}
+              onContinue={continueIncidentAction}
+              onRetry={retryIncident}
+              stoppingKey={stoppingKey}
+              continuingKey={continuingKey}
+              retryingKey={retryingKey}
+            />
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 function renderSimilarIssuesInline(text) {

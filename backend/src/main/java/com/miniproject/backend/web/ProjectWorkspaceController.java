@@ -110,11 +110,55 @@ public class ProjectWorkspaceController {
     public record GraphifyIndexPathRequest(String path) {
     }
 
+    /**
+     * Named sub-folders under one project (e.g. "Frontend"/"Backend"/"Admin
+     * console") — the general form of the single graphify-index-path override
+     * above. Scoped by workspace id (not "current") so the analyst can define
+     * these from the switchboard without first switching to that project.
+     */
+    @CrossOrigin(origins = "*")
+    @GetMapping("/{id}/subpaths")
+    public List<ProjectWorkspaceSubpathView> listSubpaths(@PathVariable String id) {
+        return service.listSubpaths(id).stream().map(ProjectWorkspaceSubpathView::of).toList();
+    }
+
+    @CrossOrigin(origins = "*")
+    @PostMapping("/{id}/subpaths")
+    public ProjectWorkspaceSubpathView addSubpath(@PathVariable String id, @RequestBody AddSubpathRequest request) {
+        return ProjectWorkspaceSubpathView.of(service.addSubpath(id, request.label(), request.path()));
+    }
+
+    @CrossOrigin(origins = "*")
+    @DeleteMapping("/{id}/subpaths/{subpathId}")
+    public void removeSubpath(@PathVariable String id, @PathVariable String subpathId) {
+        service.removeSubpath(id, subpathId);
+    }
+
+    /** Indexes this sub-path's own architecture graph — required once before its diagram can be picked from Project Overview. */
+    @CrossOrigin(origins = "*")
+    @PostMapping("/{id}/subpaths/{subpathId}/index")
+    public ProjectWorkspaceSubpathView indexSubpath(@PathVariable String id, @PathVariable String subpathId) {
+        return ProjectWorkspaceSubpathView.of(service.indexSubpath(id, subpathId));
+    }
+
+    public record AddSubpathRequest(String label, String path) {
+    }
+
     @CrossOrigin(origins = "*")
     @GetMapping("/current/diagram")
-    public DiagramView currentDiagram() {
+    public DiagramView currentDiagram(@RequestParam(name = "subpath_id", required = false) String subpathId) {
         ProjectWorkspaceEntity current = service.current()
                 .orElseThrow(() -> new IllegalArgumentException("No active project workspace"));
+
+        if (subpathId != null && !subpathId.isBlank()) {
+            var subpath = service.getSubpath(subpathId);
+            if (!"ready".equals(subpath.getIndexStatus())) {
+                throw new IllegalArgumentException(
+                        "Sub-path \"" + subpath.getLabel() + "\" is not indexed yet (status: " + subpath.getIndexStatus() + ") — index it first.");
+            }
+            return new DiagramView(diagramService.generateMermaid(subpath.getIndexedProjectName()));
+        }
+
         if (!"ready".equals(current.getIndexStatus())) {
             throw new IllegalArgumentException(
                     "Project is not indexed yet (status: " + current.getIndexStatus() + ") — diagram not available.");
@@ -124,23 +168,80 @@ public class ProjectWorkspaceController {
 
     @CrossOrigin(origins = "*")
     @GetMapping("/current/endpoints")
-    public List<EndpointSequenceDiagramService.EndpointOption> currentEndpoints() {
-        ProjectWorkspaceEntity current = service.current()
-                .orElseThrow(() -> new IllegalArgumentException("No active project workspace"));
-        return endpointSequenceDiagramService.listEndpoints(Path.of(current.getLocalPath()));
+    public List<EndpointSequenceDiagramService.EndpointOption> currentEndpoints(
+            @RequestParam(name = "subpath_id", required = false) String subpathId) {
+        service.current().orElseThrow(() -> new IllegalArgumentException("No active project workspace"));
+        return endpointSequenceDiagramService.listEndpoints(resolveScanPath(subpathId));
     }
 
     @CrossOrigin(origins = "*")
     @GetMapping("/current/endpoints/sequence")
     public DiagramView currentEndpointSequence(
             @RequestParam String endpointId,
-            @RequestParam(defaultValue = "scanner") String engine) {
+            @RequestParam(defaultValue = "scanner") String engine,
+            @RequestParam(name = "subpath_id", required = false) String subpathId) {
+        service.current().orElseThrow(() -> new IllegalArgumentException("No active project workspace"));
+        if (endpointId == null || endpointId.isBlank()) {
+            throw new IllegalArgumentException("endpointId is required");
+        }
+        return new DiagramView(endpointSequenceDiagramService.generateMermaid(resolveScanPath(subpathId), endpointId, engine));
+    }
+
+    /** Which folder endpoint scanning reads from: the picked sub-path if one was given, else the whole active project. */
+    private Path resolveScanPath(String subpathId) {
+        if (subpathId != null && !subpathId.isBlank()) {
+            return Path.of(service.getSubpath(subpathId).getPath());
+        }
+        ProjectWorkspaceEntity current = service.current()
+                .orElseThrow(() -> new IllegalArgumentException("No active project workspace"));
+        return Path.of(current.getLocalPath());
+    }
+
+    /**
+     * "See backend endpoint" / "See frontend caller" — works in both
+     * directions. The selected endpoint is scoped to subpathId; this looks
+     * at every OTHER sub-path defined on the same project and cross-
+     * references against the first one that has routes of the OPPOSITE kind
+     * (frontend calls if the selected endpoint is backend, backend routes if
+     * it's frontend). Doesn't require the analyst to say which sub-path is
+     * "the backend" explicitly — with the common two-sub-path case (one
+     * frontend, one backend) there's only ever one candidate anyway.
+     */
+    @CrossOrigin(origins = "*")
+    @GetMapping("/current/endpoints/cross-reference")
+    public DiagramView currentEndpointCrossReference(
+            @RequestParam("endpoint_id") String endpointId,
+            @RequestParam(name = "subpath_id", required = false) String subpathId) {
         ProjectWorkspaceEntity current = service.current()
                 .orElseThrow(() -> new IllegalArgumentException("No active project workspace"));
         if (endpointId == null || endpointId.isBlank()) {
             throw new IllegalArgumentException("endpointId is required");
         }
-        return new DiagramView(endpointSequenceDiagramService.generateMermaid(Path.of(current.getLocalPath()), endpointId, engine));
+        Path currentPath = resolveScanPath(subpathId);
+
+        EndpointSequenceDiagramService.EndpointOption endpoint = endpointSequenceDiagramService.listEndpoints(currentPath).stream()
+                .filter(e -> e.id().equals(endpointId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Endpoint not found: " + endpointId));
+        boolean wantsBackend = "frontend".equals(endpoint.framework());
+
+        for (var candidate : service.listSubpaths(current.getId())) {
+            if (subpathId != null && candidate.getId().equals(subpathId)) {
+                continue;
+            }
+            Path candidatePath = Path.of(candidate.getPath());
+            List<EndpointSequenceDiagramService.EndpointOption> candidateEndpoints =
+                    endpointSequenceDiagramService.listEndpoints(candidatePath);
+            boolean hasWantedKind = wantsBackend
+                    ? candidateEndpoints.stream().anyMatch(e -> !"frontend".equals(e.framework()))
+                    : candidateEndpoints.stream().anyMatch(e -> "frontend".equals(e.framework()));
+            if (hasWantedKind) {
+                return new DiagramView(endpointSequenceDiagramService.generateCrossReferencedMermaid(currentPath, candidatePath, endpointId));
+            }
+        }
+        throw new IllegalArgumentException(wantsBackend
+                ? "No other sub-path with backend routes was found. Add a \"Backend\" sub-path for this project first (Project Control Center -> Sub-paths)."
+                : "No other sub-path with frontend calls was found. Add a \"Frontend\" sub-path for this project first (Project Control Center -> Sub-paths).");
     }
 
     public record DiagramView(String mermaid) {
