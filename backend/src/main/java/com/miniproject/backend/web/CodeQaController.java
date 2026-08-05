@@ -3,7 +3,11 @@ package com.miniproject.backend.web;
 import com.miniproject.backend.artifact.Artifact;
 import com.miniproject.backend.coordinator.CoordinatorService;
 import com.miniproject.backend.github.GitHubPrException;
+import com.miniproject.backend.integrations.ExternalConnectorException;
 import com.miniproject.backend.skills.CodeQaResult;
+import com.miniproject.backend.skills.HermesSetupWizardResult;
+import com.miniproject.backend.skills.HermesTrendingDigestResult;
+import com.miniproject.backend.skills.HermesVersionAdvisorResult;
 import com.miniproject.backend.skills.ImpactAnalysisResult;
 import com.miniproject.backend.skills.TestCaseGenResult;
 import org.springframework.http.HttpStatus;
@@ -75,6 +79,34 @@ public class CodeQaController {
         return RequirementAnalysisResponse.of(coordinator.requirementAnalysis(request.profile(), request.analysisInput()));
     }
 
+    @CrossOrigin(origins = "*")
+    @PostMapping("/hermes-setup-wizard")
+    public Artifact<HermesSetupWizardResult> hermesSetupWizard(@RequestBody HermesSetupWizardRequest request) {
+        if (request.profile() == null || request.repoPath() == null || request.repoPath().isBlank()) {
+            throw new IllegalArgumentException("profile and repoPath are required");
+        }
+        return coordinator.hermesSetupWizard(request.profile(), request.toAnswers());
+    }
+
+    @CrossOrigin(origins = "*")
+    @PostMapping("/hermes-version-advisor")
+    public Artifact<HermesVersionAdvisorResult> hermesVersionAdvisor(@RequestBody HermesVersionAdvisorRequest request) {
+        if (request.profile() == null || request.repoPath() == null || request.repoPath().isBlank()) {
+            throw new IllegalArgumentException("profile and repoPath are required");
+        }
+        return coordinator.hermesVersionAdvisor(
+                request.profile(), request.repoPath(), request.remoteRef(), request.localRef(), request.watchedPaths());
+    }
+
+    @CrossOrigin(origins = "*")
+    @PostMapping("/hermes-trending-digest")
+    public Artifact<HermesTrendingDigestResult> hermesTrendingDigest(@RequestBody HermesTrendingDigestRequest request) {
+        if (request.profile() == null || request.profile().isBlank()) {
+            throw new IllegalArgumentException("profile is required");
+        }
+        return coordinator.hermesTrendingDigest(request.profile());
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public String handleBadRequest(IllegalArgumentException e) {
@@ -84,6 +116,12 @@ public class CodeQaController {
     @ExceptionHandler(GitHubPrException.class)
     @ResponseStatus(HttpStatus.BAD_GATEWAY)
     public String handleGitHubError(GitHubPrException e) {
+        return e.getMessage();
+    }
+
+    @ExceptionHandler(ExternalConnectorException.class)
+    @ResponseStatus(HttpStatus.BAD_GATEWAY)
+    public String handleExternalConnectorError(ExternalConnectorException e) {
         return e.getMessage();
     }
 }

@@ -46,7 +46,7 @@ public class RuleBasedRequirementAnalysisSynthesizer implements RequirementAnaly
         List<String> missingInformation = new ArrayList<>();
         List<RequirementAnalysisResult.Ambiguity> ambiguities = new ArrayList<>();
         List<String> businessRules = new ArrayList<>();
-        List<RequirementAnalysisResult.AnalystConcern> analystConcerns = analystConcerns(lower, description);
+        List<RequirementAnalysisResult.AnalystConcern> analystConcerns = analystConcerns(lower, sentences, description);
 
         int wordCount = description.trim().isEmpty() ? 0 : description.trim().split("\\s+").length;
         if (wordCount < MIN_WORDS_FOR_CONCRETE_SCOPE) {
@@ -226,41 +226,72 @@ public class RuleBasedRequirementAnalysisSynthesizer implements RequirementAnaly
         };
     }
 
-    private List<RequirementAnalysisResult.AnalystConcern> analystConcerns(String lower, String description) {
+    /**
+     * Each concern used to carry the entire raw ticket dump as its "evidence"
+     * -- identical, multi-paragraph text repeated for every triggered
+     * concern, which reads as noise rather than evidence. Trigger detection
+     * still scans the whole lowercased text (a keyword can legitimately sit
+     * in any field), but the evidence shown is now just the sentence(s) that
+     * actually contain a trigger word for that concern.
+     */
+    private List<RequirementAnalysisResult.AnalystConcern> analystConcerns(
+            String lower, List<String> sentences, String description) {
         List<RequirementAnalysisResult.AnalystConcern> concerns = new ArrayList<>();
-        if (containsAny(lower, "victim", "donor", "address", "phone", "email", "location", "city", "nric", "identity card")) {
-            concerns.add(new RequirementAnalysisResult.AnalystConcern(
-                    "privacy",
-                    "medium",
-                    "Requirement may expose personal, location, donor, or aid-request data.",
-                    description,
-                    "Confirm which fields are visible to each role and whether personal data needs masking or consent."));
-        }
-        if (containsAny(lower, "admin", "superadmin", "donor", "victim", "approved", "access", "role")) {
-            concerns.add(new RequirementAnalysisResult.AnalystConcern(
-                    "role_access",
-                    "medium",
-                    "Requirement appears to depend on who is allowed to view or change records.",
-                    description,
-                    "Confirm the role permission matrix and whether unapproved records must be hidden."));
-        }
-        if (containsAny(lower, "filter", "search", "sort", "list", "records", "report")) {
-            concerns.add(new RequirementAnalysisResult.AnalystConcern(
-                    "performance",
-                    "low",
-                    "Listing or filtering changes may affect response time when data grows.",
-                    description,
-                    "Confirm expected record volume, pagination behavior, and whether database indexes are needed."));
-        }
-        if (containsAny(lower, "must", "should", "given", "when", "then", "filter", "update", "change")) {
-            concerns.add(new RequirementAnalysisResult.AnalystConcern(
-                    "testing",
-                    "low",
-                    "Change needs positive, negative, and regression test coverage before handoff.",
-                    description,
-                    "Confirm the main acceptance path, denied-access cases, and affected regression areas."));
-        }
+        addConcernIfTriggered(concerns, lower, sentences, description,
+                "privacy", "medium",
+                "Requirement may expose personal, location, donor, or aid-request data.",
+                "Confirm which fields are visible to each role and whether personal data needs masking or consent.",
+                "victim", "donor", "address", "phone", "email", "location", "city", "nric", "identity card");
+        addConcernIfTriggered(concerns, lower, sentences, description,
+                "role_access", "medium",
+                "Requirement appears to depend on who is allowed to view or change records.",
+                "Confirm the role permission matrix and whether unapproved records must be hidden.",
+                "admin", "superadmin", "donor", "victim", "approved", "access", "role");
+        addConcernIfTriggered(concerns, lower, sentences, description,
+                "performance", "low",
+                "Listing or filtering changes may affect response time when data grows.",
+                "Confirm expected record volume, pagination behavior, and whether database indexes are needed.",
+                "filter", "search", "sort", "list", "records", "report");
+        addConcernIfTriggered(concerns, lower, sentences, description,
+                "testing", "low",
+                "Change needs positive, negative, and regression test coverage before handoff.",
+                "Confirm the main acceptance path, denied-access cases, and affected regression areas.",
+                "must", "should", "given", "when", "then", "filter", "update", "change");
         return concerns;
+    }
+
+    private void addConcernIfTriggered(
+            List<RequirementAnalysisResult.AnalystConcern> concerns,
+            String lower, List<String> sentences, String description,
+            String category, String severity, String note, String question, String... keywords) {
+        if (!containsAny(lower, keywords)) {
+            return;
+        }
+        concerns.add(new RequirementAnalysisResult.AnalystConcern(
+                category, severity, note, matchingEvidence(sentences, description, keywords), question));
+    }
+
+    private static final int MAX_EVIDENCE_SENTENCES = 3;
+    private static final int FALLBACK_EVIDENCE_CHARS = 200;
+
+    /** The sentence(s) that actually contain a trigger keyword, joined; falls back to a short preview if none match at sentence granularity. */
+    private String matchingEvidence(List<String> sentences, String description, String[] keywords) {
+        List<String> matches = new ArrayList<>();
+        for (String sentence : sentences) {
+            if (containsAny(sentence.toLowerCase(Locale.ROOT), keywords)) {
+                matches.add(sentence.trim());
+            }
+            if (matches.size() >= MAX_EVIDENCE_SENTENCES) {
+                break;
+            }
+        }
+        if (!matches.isEmpty()) {
+            return String.join(" / ", matches);
+        }
+        String trimmed = description.trim();
+        return trimmed.length() > FALLBACK_EVIDENCE_CHARS
+                ? trimmed.substring(0, FALLBACK_EVIDENCE_CHARS) + "..."
+                : trimmed;
     }
 
     private boolean containsAny(String lower, String... needles) {

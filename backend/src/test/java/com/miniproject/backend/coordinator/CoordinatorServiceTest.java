@@ -7,10 +7,15 @@ import com.miniproject.backend.agent.SoftwareAnalystAgent;
 import com.miniproject.backend.artifact.Artifact;
 import com.miniproject.backend.artifact.Evidence;
 import com.miniproject.backend.github.GitHubPrReader;
+import com.miniproject.backend.github.ScopeCreepDetector;
 import com.miniproject.backend.memory.MemoryCardService;
 import com.miniproject.backend.persistence.ArtifactPersistenceService;
 import com.miniproject.backend.skills.CodeQaSkill;
 import com.miniproject.backend.skills.HandoffSummaryResult;
+import com.miniproject.backend.skills.HermesSetupWizardSkill;
+import com.miniproject.backend.skills.HermesTrendingDigestSkill;
+import com.miniproject.backend.skills.HermesVersionAdvisorSkill;
+import com.miniproject.backend.skills.ImpactAnalysisResult;
 import com.miniproject.backend.skills.ImpactAnalysisSkill;
 import com.miniproject.backend.skills.RequirementAnalysisResult;
 import com.miniproject.backend.skills.RequirementAnalysisSkill;
@@ -39,13 +44,20 @@ class CoordinatorServiceTest {
             new ObjectMapper().setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
     private final RequirementAnalysisSkill requirementAnalysisSkill = mock(RequirementAnalysisSkill.class);
     private final MemoryCardService memoryCardService = mock(MemoryCardService.class);
+    private final ImpactAnalysisSkill impactAnalysisSkill = mock(ImpactAnalysisSkill.class);
+    private final GitHubPrReader prReader = mock(GitHubPrReader.class);
+    private final ScopeCreepDetector scopeCreepDetector = mock(ScopeCreepDetector.class);
     private final CoordinatorService coordinator = new CoordinatorService(
             mock(CodeQaSkill.class),
-            mock(ImpactAnalysisSkill.class),
-            mock(GitHubPrReader.class),
+            impactAnalysisSkill,
+            prReader,
+            scopeCreepDetector,
             mock(TestCaseGenSkill.class),
             mock(TimelineEstimationSynthesizer.class),
             requirementAnalysisSkill,
+            mock(HermesSetupWizardSkill.class),
+            mock(HermesVersionAdvisorSkill.class),
+            mock(HermesTrendingDigestSkill.class),
             persistence,
             new AgentRegistry(List.of(new SoftwareAnalystAgent())),
             objectMapper,
@@ -107,6 +119,37 @@ class CoordinatorServiceTest {
                 coordinator.requirementAnalysis("software-analyst", "Donor should filter aid requests by city.");
 
         assertThat(artifact.result().similarPastChanges()).containsExactly(pastChange);
+    }
+
+    @Test
+    void impactAnalysisFromPrAttachesScopeCreepFindingsFromDetector() {
+        GitHubPrReader.PrSummary pr = new GitHubPrReader.PrSummary(
+                "acme", "widgets", 42, "Fix checkout timeout",
+                List.of(
+                        new GitHubPrReader.PrFile("src/CheckoutController.php", "modified", "patch text"),
+                        new GitHubPrReader.PrFile("src/UnrelatedHelper.php", "modified", "patch text")));
+        String prUrl = "https://github.com/acme/widgets/pull/42";
+        when(prReader.fetch(prUrl)).thenReturn(pr);
+        when(prReader.toChangeRequestText(pr)).thenReturn("PR #42 in acme/widgets: Fix checkout timeout.");
+
+        ImpactAnalysisResult skillResult = new ImpactAnalysisResult(
+                List.of(new ImpactAnalysisResult.AffectedModule(
+                        "CheckoutController", "src/CheckoutController.php:10", "matched candidate", "src/CheckoutController.php:10")),
+                List.of(), "low", new ImpactAnalysisResult.Effort("S", "1 affected module(s)"),
+                List.of(), "medium", List.of(), List.of(), List.of());
+        when(impactAnalysisSkill.run("PR #42 in acme/widgets: Fix checkout timeout.")).thenReturn(skillResult);
+
+        List<ImpactAnalysisResult.ScopeCreepFinding> findings = List.of(
+                new ImpactAnalysisResult.ScopeCreepFinding(
+                        "src/UnrelatedHelper.php", "undeclared_change",
+                        "PR modified this file, but it is not in the declared affected modules."));
+        when(scopeCreepDetector.detect(pr.files(), skillResult.affectedModules())).thenReturn(findings);
+
+        Artifact<ImpactAnalysisResult> artifact = coordinator.impactAnalysisFromPr("software-analyst", prUrl);
+
+        assertThat(artifact.result().scopeCreepFindings()).isEqualTo(findings);
+        assertThat(artifact.result().evidence()).anyMatch(evidence -> evidence.claim().equals("Source PR: Fix checkout timeout"));
+        verify(persistence).save(any(Artifact.class), eq("software-analyst"), eq(prUrl));
     }
 
     @Test

@@ -22,6 +22,9 @@ public class SoftwareAnalystAgent implements Agent {
                 "test-case-gen",
                 "test-scope-review",
                 "timeline-estimation",
-                "handoff-summary");
+                "handoff-summary",
+                "hermes-setup-wizard",
+                "hermes-version-advisor",
+                "hermes-trending-digest");
     }
 }

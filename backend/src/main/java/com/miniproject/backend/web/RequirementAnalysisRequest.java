@@ -13,7 +13,8 @@ public record RequirementAnalysisRequest(
         String receivedAt,
         String acceptanceCriteria,
         String comments,
-        String codeSnippet) {
+        String codeSnippet,
+        String codeEvidenceUrl) {
 
     public String analysisInput() {
         String freeTextDescription = safe(description);
@@ -27,7 +28,8 @@ public record RequirementAnalysisRequest(
                 && safe(receivedAt).isBlank()
                 && safe(acceptanceCriteria).isBlank()
                 && safe(comments).isBlank()
-                && safe(codeSnippet).isBlank()) {
+                && safe(codeSnippet).isBlank()
+                && safe(codeEvidenceUrl).isBlank()) {
             return freeTextDescription;
         }
 
@@ -49,6 +51,11 @@ public record RequirementAnalysisRequest(
         // short on purpose: this text flows into keyword extraction alongside
         // the snippet (Section: TextTermExtractor), so a long descriptive
         // label pollutes potential_affected_areas with its own words.
+        // codeEvidenceUrl is a distinct field from sourceUrl (the ticket's own
+        // origin link, e.g. the Jira issue) -- this is a GitHub file/PR link
+        // the analyst pastes as restricted-code evidence, same restricted-
+        // network scenario as codeSnippet above.
+        appendLine(builder, "Code evidence URL", codeEvidenceUrl);
         appendBlock(builder, "Code evidence", codeSnippet);
         return builder.toString().trim();
     }

@@ -21,6 +21,7 @@ class RequirementAnalysisRequestTest {
                 "Today 09:30",
                 "Given a customer is paying, when OTP is valid, then payment can continue.",
                 "Stakeholder asked to keep existing card validation.",
+                null,
                 null);
 
         assertThat(request.analysisInput())
@@ -52,6 +53,7 @@ class RequirementAnalysisRequestTest {
                 null,
                 null,
                 null,
+                null,
                 null);
 
         assertThat(request.analysisInput()).isEqualTo("Customer must be able to update payment method.");
@@ -63,7 +65,8 @@ class RequirementAnalysisRequestTest {
                 "software-analyst",
                 "Donation status should update when payment confirms.",
                 null, null, null, null, null, null, null, null, null, null,
-                "public function markPaid(Donation $donation) { $donation->status = 'paid'; }");
+                "public function markPaid(Donation $donation) { $donation->status = 'paid'; }",
+                null);
 
         assertThat(request.analysisInput())
                 .contains("Code evidence:")
@@ -74,8 +77,34 @@ class RequirementAnalysisRequestTest {
     void codeSnippetAloneWithNoOtherFieldsStillProducesStructuredInput() {
         RequirementAnalysisRequest request = new RequirementAnalysisRequest(
                 "software-analyst", null, null, null, null, null, null, null, null, null, null, null,
-                "class Donation { public $status; }");
+                "class Donation { public $status; }",
+                null);
 
         assertThat(request.analysisInput()).contains("Code evidence:\nclass Donation");
+    }
+
+    @Test
+    void codeEvidenceUrlIsKeptDistinctFromTicketSourceUrl() {
+        RequirementAnalysisRequest request = new RequirementAnalysisRequest(
+                "software-analyst",
+                "Checkout should retry on gateway timeout.",
+                "KAN-4", null, null, null, "Jira", "Jira import",
+                "https://ng-ling-ling.atlassian.net/browse/KAN-4",
+                null, null, null, null,
+                "https://github.com/org/repo/blob/main/app/Http/Controllers/CheckoutController.php");
+
+        assertThat(request.analysisInput())
+                .contains("Source URL: https://ng-ling-ling.atlassian.net/browse/KAN-4")
+                .contains("Code evidence URL: https://github.com/org/repo/blob/main/app/Http/Controllers/CheckoutController.php");
+    }
+
+    @Test
+    void codeEvidenceUrlAloneWithNoOtherFieldsStillProducesStructuredInput() {
+        RequirementAnalysisRequest request = new RequirementAnalysisRequest(
+                "software-analyst", null, null, null, null, null, null, null, null, null, null, null, null,
+                "https://github.com/org/repo/blob/main/app/Http/Controllers/CheckoutController.php");
+
+        assertThat(request.analysisInput())
+                .contains("Code evidence URL: https://github.com/org/repo/blob/main/app/Http/Controllers/CheckoutController.php");
     }
 }
