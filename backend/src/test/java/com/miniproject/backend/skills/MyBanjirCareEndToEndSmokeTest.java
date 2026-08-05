@@ -7,6 +7,7 @@ import com.miniproject.backend.workspace.GraphifyIndexService;
 import com.miniproject.backend.workspace.ProjectWorkspaceEntity;
 import com.miniproject.backend.workspace.ProjectWorkspaceRepository;
 import com.miniproject.backend.workspace.ProjectWorkspaceService;
+import com.miniproject.backend.workspace.ProjectWorkspaceSubpathRepository;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
@@ -38,7 +39,7 @@ class MyBanjirCareEndToEndSmokeTest {
             ProjectGraphClient graphClient = mcpToolClient;
             ProjectContextMatcher matcher = new ProjectContextMatcher(projectName, repoPath, graphClient);
             ProjectWorkspaceService workspaceService = new ProjectWorkspaceService(
-                    repositoryStub(), matcher, graphClient, new GraphifyIndexService("graphify"));
+                    repositoryStub(), mock(ProjectWorkspaceSubpathRepository.class), matcher, graphClient, new GraphifyIndexService("graphify"));
             try {
                 ProjectWorkspaceEntity declared = workspaceService.declare(
                         projectName,

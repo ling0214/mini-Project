@@ -5,6 +5,8 @@ import com.miniproject.backend.skills.ProjectContextMatcher;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Optional;
@@ -22,10 +24,12 @@ import static org.mockito.Mockito.when;
 class ProjectWorkspaceServiceTest {
 
     private final ProjectWorkspaceRepository repository = mock(ProjectWorkspaceRepository.class);
+    private final ProjectWorkspaceSubpathRepository subpathRepository = mock(ProjectWorkspaceSubpathRepository.class);
     private final ProjectContextMatcher matcher = mock(ProjectContextMatcher.class);
     private final ProjectGraphClient graphClient = mock(ProjectGraphClient.class);
     private final GraphifyIndexService graphifyIndexService = mock(GraphifyIndexService.class);
-    private final ProjectWorkspaceService service = new ProjectWorkspaceService(repository, matcher, graphClient, graphifyIndexService);
+    private final ProjectWorkspaceService service =
+            new ProjectWorkspaceService(repository, subpathRepository, matcher, graphClient, graphifyIndexService);
 
     @Test
     void declareRejectsMissingLocalPath(@TempDir Path tempDir) {
@@ -241,5 +245,29 @@ class ProjectWorkspaceServiceTest {
 
         assertThatThrownBy(() -> service.remove("missing-id"))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void indexSubpathSanitizesTheGeneratedProjectNameForCodebaseMemoryMcp(@TempDir Path tempDir) throws IOException {
+        // codebase-memory-mcp normalizes spaces/punctuation differently between
+        // index_repository and get_architecture (a real bug hit against a
+        // workspace named "Admin Console (test)" -- indexed under
+        // "Admin-Console-test-Frontend" but then 404'd when queried as
+        // "Admin_Console_(test)_::_Frontend"). Pre-sanitizing must produce the
+        // same hyphen-only shape both tools already agree on.
+        ProjectWorkspaceEntity workspace = new ProjectWorkspaceEntity(
+                "workspace-id", "Admin Console (test)", null, tempDir.toString(), Instant.now());
+        when(repository.findById("workspace-id")).thenReturn(Optional.of(workspace));
+
+        Path subpathDir = Files.createDirectory(tempDir.resolve("webapp"));
+        ProjectWorkspaceSubpathEntity subpath = new ProjectWorkspaceSubpathEntity(
+                "subpath-id", "workspace-id", "Frontend", subpathDir.toString(), Instant.now());
+        when(subpathRepository.findById("subpath-id")).thenReturn(Optional.of(subpath));
+        when(subpathRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ProjectWorkspaceSubpathEntity result = service.indexSubpath("workspace-id", "subpath-id");
+
+        assertThat(result.getIndexedProjectName()).isEqualTo("Admin-Console-test-Frontend");
+        verify(graphClient, timeout(2000)).indexProject(subpathDir.toString(), "Admin-Console-test-Frontend");
     }
 }

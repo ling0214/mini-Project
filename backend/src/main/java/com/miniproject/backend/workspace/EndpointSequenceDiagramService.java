@@ -10,9 +10,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -58,6 +60,28 @@ public class EndpointSequenceDiagramService {
             "(?:async\\s+)?function\\s+([A-Za-z0-9_]+)\\s*\\([^)]*\\)\\s*\\{|(?:const|let)\\s+([A-Za-z0-9_]+)\\s*=\\s*(?:async\\s*)?\\([^)]*\\)\\s*=>\\s*\\{",
             Pattern.DOTALL);
 
+    // Angular/JHipster: this.http.get<T>(this.resourceUrl, ...) where
+    // `resourceUrl` is a class field declared elsewhere in the same file as
+    // `SERVER_API_URL + 'api/...'` -- verified against real generated
+    // services (UserService, ActivateService) rather than guessed. The call
+    // itself rarely has the literal path inline (unlike this project's own
+    // api() helper), so resolving it is a two-step: find the field
+    // declarations first, then resolve each call's argument against them.
+    private static final Pattern ANGULAR_HTTP_CALL = Pattern.compile(
+            "\\.(get|post|put|patch|delete)\\s*(?:<[^>(){}]*>)?\\s*\\(\\s*([^,)]+)",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern ANGULAR_RESOURCE_URL_FIELD = Pattern.compile(
+            "\\b([A-Za-z0-9_]+)\\s*=\\s*SERVER_API_URL\\s*\\+\\s*([`'\"])([^`'\"]*)\\2");
+    private static final Pattern ANGULAR_INLINE_CONCAT = Pattern.compile(
+            "SERVER_API_URL\\s*\\+\\s*([`'\"])([^`'\"]*)\\1");
+    private static final Pattern ANGULAR_QUOTED_LITERAL = Pattern.compile("^([`'\"])(.*)\\1$", Pattern.DOTALL);
+    private static final Pattern ANGULAR_TEMPLATE_VAR_REF = Pattern.compile("\\$\\{\\s*(?:this\\.)?([A-Za-z0-9_]+)\\s*}");
+    private static final Pattern ANGULAR_BARE_REF = Pattern.compile("^(?:this\\.)?([A-Za-z0-9_]+)$");
+    private static final Pattern TS_METHOD_START = Pattern.compile(
+            "(?:public\\s+|private\\s+|protected\\s+)?([A-Za-z_][A-Za-z0-9_]*)\\s*\\([^()]*\\)\\s*:\\s*[A-Za-z0-9_<>\\[\\],. ]+\\s*\\{",
+            Pattern.DOTALL);
+    private static final Pattern TS_CLASS_NAME = Pattern.compile("class\\s+([A-Za-z0-9_]+)");
+
     public List<EndpointOption> listEndpoints(Path projectPath) {
         List<EndpointOption> endpoints = new ArrayList<>();
         endpoints.addAll(listSpringEndpoints(projectPath));
@@ -71,7 +95,12 @@ public class EndpointSequenceDiagramService {
     }
 
     private List<EndpointOption> listLaravelEndpoints(Path projectPath) {
-        Path routes = projectPath.resolve("routes");
+        // Prefer the conventional <repo-root>/routes folder; if it's not
+        // there, the analyst may have pointed a sub-path directly at some
+        // other folder that itself holds route files -- scan it directly
+        // rather than assuming nothing is there.
+        Path nested = projectPath.resolve("routes");
+        Path routes = Files.isDirectory(nested) ? nested : projectPath;
         if (!Files.isDirectory(routes)) {
             return List.of();
         }
@@ -107,6 +136,120 @@ public class EndpointSequenceDiagramService {
         }
 
         return generateScannerMermaid(projectPath, endpoint);
+    }
+
+    /**
+     * The frontend and backend endpoint scans are otherwise independent --
+     * this is what actually joins them: given an endpoint from either side
+     * and a separate folder to scan for the OTHER side's routes, find the
+     * matching counterpart and render one combined sequence diagram end-to-
+     * end, instead of the frontend diagram's generic "Api->>Backend" black
+     * box. Works in both directions: pick a frontend call to find which
+     * backend controller it hits, or pick a backend route to find a frontend
+     * call site that hits it.
+     */
+    public String generateCrossReferencedMermaid(Path currentProjectPath, Path otherProjectPath, String endpointId) {
+        EndpointOption endpoint = listEndpoints(currentProjectPath).stream()
+                .filter(item -> item.id().equals(endpointId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Endpoint not found: " + endpointId));
+
+        if ("frontend".equals(endpoint.framework())) {
+            List<EndpointOption> backendEndpoints = listEndpoints(otherProjectPath);
+            Optional<EndpointOption> match = findMatchingBackendEndpoint(endpoint, backendEndpoints);
+            if (match.isEmpty()) {
+                return generateFrontendMermaid(endpoint);
+            }
+            return generateCombinedMermaid(otherProjectPath, endpoint, match.get());
+        }
+
+        List<EndpointOption> frontendEndpoints = listEndpoints(otherProjectPath);
+        Optional<EndpointOption> match = findMatchingFrontendEndpoint(endpoint, frontendEndpoints);
+        if (match.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "No frontend call was found for " + endpoint.method() + " " + endpoint.path() + ".");
+        }
+        return generateCombinedMermaid(currentProjectPath, match.get(), endpoint);
+    }
+
+    /** Matches by HTTP method + path shape, treating any {placeholder} segment (Spring's {id}, this scanner's own {value}) as an equivalent wildcard. */
+    public Optional<EndpointOption> findMatchingBackendEndpoint(EndpointOption frontendEndpoint, List<EndpointOption> candidateEndpoints) {
+        String wantedPath = wildcardPath(frontendEndpoint.path());
+        return candidateEndpoints.stream()
+                .filter(candidate -> !"frontend".equals(candidate.framework()))
+                .filter(candidate -> candidate.method().equalsIgnoreCase(frontendEndpoint.method()) || "ANY".equals(candidate.method()))
+                .filter(candidate -> wildcardPath(candidate.path()).equals(wantedPath))
+                .findFirst();
+    }
+
+    /** The reverse direction of findMatchingBackendEndpoint -- given a backend route, find a frontend call site that hits it (the first one, if several components all call the same endpoint). */
+    public Optional<EndpointOption> findMatchingFrontendEndpoint(EndpointOption backendEndpoint, List<EndpointOption> candidateEndpoints) {
+        String wantedPath = wildcardPath(backendEndpoint.path());
+        return candidateEndpoints.stream()
+                .filter(candidate -> "frontend".equals(candidate.framework()))
+                .filter(candidate -> candidate.method().equalsIgnoreCase(backendEndpoint.method()))
+                .filter(candidate -> wildcardPath(candidate.path()).equals(wantedPath))
+                .findFirst();
+    }
+
+    private static String wildcardPath(String path) {
+        return path.replaceAll("\\{[^}]*}", "{*}");
+    }
+
+    private String generateCombinedMermaid(Path backendProjectPath, EndpointOption frontendEndpoint, EndpointOption backendEndpoint) {
+        boolean spring = "spring".equals(backendEndpoint.framework());
+        Path controllerPath = spring ? Path.of(backendEndpoint.routeFile()) : controllerPath(backendProjectPath, backendEndpoint.controller());
+        String controllerBody = spring
+                ? readJavaMethodBody(controllerPath, backendEndpoint.action()).orElse("")
+                : readPhpMethodBody(controllerPath, backendEndpoint.action()).orElse("");
+        List<String> models = detectModels(backendProjectPath, controllerBody);
+        boolean validates = containsAny(controllerBody, "->validate(", "$request->validate(", "Validator::", "@Valid", "BindingResult");
+        boolean touchesDatabase = containsAny(controllerBody, "DB::", "->where(", "->get(", "->first(", "->save(", "::create(", "::find(",
+                "repository.", "Repository", ".save(", ".findBy", ".findAll(");
+        boolean notifies = containsAny(controllerBody, "Notification", "Mail::", "->notify(", "event(", "handoff", "external");
+
+        String controllerLabel = shortController(backendEndpoint.controller()) + "." + backendEndpoint.action() + "()";
+        String frontendLabel = frontendEndpoint.controller() + "." + frontendEndpoint.action() + "()";
+
+        StringBuilder sb = new StringBuilder(SEQUENCE_THEME_INIT);
+        sb.append("  actor Analyst\n");
+        sb.append("  participant UI as React/Angular UI\n");
+        sb.append("  participant Api as frontend HTTP call\n");
+        sb.append("  participant Route as ").append(spring ? "Spring MVC Route" : "Laravel Route").append('\n');
+        sb.append("  participant Controller as ").append(escape(controllerLabel)).append('\n');
+        if (validates) sb.append("  participant Request as Request validation\n");
+        for (String model : models) {
+            sb.append("  participant ").append(nodeId(model)).append(" as ").append(escape(model)).append(" model\n");
+        }
+        if (touchesDatabase) sb.append("  participant DB as Database\n");
+        if (notifies) sb.append("  participant Notify as Notification/Mail\n");
+
+        sb.append("  Analyst->>UI: trigger ").append(escape(humanAction(frontendEndpoint.action()))).append('\n');
+        sb.append("  UI->>Api: ").append(escape(frontendLabel)).append('\n');
+        sb.append("  Note right of UI: ").append(escape(frontendEndpoint.routeFile())).append('\n');
+        sb.append("  Api->>Route: ").append(escape(backendEndpoint.method())).append(" ").append(escape(backendEndpoint.path())).append('\n');
+        sb.append("  Route->>Controller: dispatch ").append(escape(controllerLabel)).append('\n');
+        sb.append("  Note right of Controller: ").append(escape(sourceLabel(backendProjectPath, controllerPath))).append('\n');
+        if (validates) {
+            sb.append("  Controller->>Request: validate request data\n");
+            sb.append("  Request-->>Controller: validated input\n");
+        }
+        for (String model : models) {
+            sb.append("  Controller->>").append(nodeId(model)).append(": read or update ").append(escape(model)).append('\n');
+            if (touchesDatabase) {
+                sb.append("  ").append(nodeId(model)).append("->>DB: query / persist data\n");
+                sb.append("  DB-->>").append(nodeId(model)).append(": records\n");
+            }
+            sb.append("  ").append(nodeId(model)).append("-->>Controller: domain result\n");
+        }
+        if (notifies) {
+            sb.append("  Controller->>Notify: send notification or email\n");
+            sb.append("  Notify-->>Controller: queued / sent\n");
+        }
+        sb.append("  Controller-->>Api: JSON / status response\n");
+        sb.append("  Api-->>UI: parsed response or error\n");
+        sb.append("  UI-->>Analyst: refreshed screen\n");
+        return sb.toString();
     }
 
     private String generateScannerMermaid(Path projectPath, EndpointOption endpoint) {
@@ -289,7 +432,11 @@ public class EndpointSequenceDiagramService {
     }
 
     private List<EndpointOption> listSpringEndpoints(Path projectPath) {
-        Path sourceRoot = projectPath.resolve("src/main/java");
+        // Same fallback as listLaravelEndpoints: a sub-path may already BE
+        // src/main/java (or some other Java source root) rather than the
+        // repo root that contains it.
+        Path nested = projectPath.resolve("src/main/java");
+        Path sourceRoot = Files.isDirectory(nested) ? nested : projectPath;
         if (!Files.isDirectory(sourceRoot)) {
             return List.of();
         }
@@ -356,6 +503,19 @@ public class EndpointSequenceDiagramService {
         if (Files.isDirectory(nestedFrontendSrc)) {
             roots.add(nestedFrontendSrc);
         }
+        // Angular/JHipster convention -- src/main/java (backend) and
+        // src/main/webapp (Angular frontend) live in the same repo root.
+        Path webapp = projectPath.resolve("src/main/webapp");
+        if (Files.isDirectory(webapp)) {
+            roots.add(webapp);
+        }
+        // None of the nested conventions matched -- the analyst likely
+        // pointed a sub-path directly at the frontend root itself (e.g. a
+        // "Frontend" sub-path set to .../src/main/webapp or a plain Vite
+        // src/ folder), rather than at the repo root above it.
+        if (roots.isEmpty() && Files.isDirectory(projectPath)) {
+            roots.add(projectPath);
+        }
         return roots;
     }
 
@@ -375,28 +535,87 @@ public class EndpointSequenceDiagramService {
     private List<EndpointOption> parseFrontendApiCalls(Path projectPath, Path sourceFile, Set<String> seen) {
         String text = read(sourceFile);
         List<EndpointOption> endpoints = new ArrayList<>();
-        Matcher matcher = FRONTEND_API_CALL.matcher(text);
-        while (matcher.find()) {
-            String rawPath = matcher.group(2);
-            if (rawPath == null || rawPath.isBlank()) {
+        String routeFile = sourceLabel(projectPath, sourceFile);
+
+        Matcher apiMatcher = FRONTEND_API_CALL.matcher(text);
+        while (apiMatcher.find()) {
+            addFrontendEndpoint(endpoints, seen, text, sourceFile, routeFile,
+                    apiMatcher.start(), apiMatcher.group(2), frontendMethod(apiMatcher.group(3)));
+        }
+
+        Map<String, String> resourceUrls = angularResourceUrls(text);
+        Matcher angularMatcher = ANGULAR_HTTP_CALL.matcher(text);
+        while (angularMatcher.find()) {
+            String rawPath = resolveAngularUrl(angularMatcher.group(2), resourceUrls);
+            if (rawPath == null) {
                 continue;
             }
-            String path = normalizeFrontendPath(rawPath);
-            if (!path.startsWith("/api/")) {
-                continue;
-            }
-            String method = frontendMethod(matcher.group(3));
-            String action = nearestFunctionName(text, matcher.start()).orElse("apiCall");
-            String component = nearestComponentName(text, matcher.start()).orElse(sourceFile.getFileName().toString());
-            String routeFile = sourceLabel(projectPath, sourceFile);
-            String key = method + " " + path + " " + routeFile + " " + action;
-            if (!seen.add(key)) {
-                continue;
-            }
-            String id = method + " " + path + " -> " + component + "@" + action;
-            endpoints.add(new EndpointOption(id, method, path, component, action, routeFile, "frontend"));
+            addFrontendEndpoint(endpoints, seen, text, sourceFile, routeFile,
+                    angularMatcher.start(), rawPath, angularMatcher.group(1).toUpperCase(Locale.ROOT));
         }
         return endpoints;
+    }
+
+    private void addFrontendEndpoint(
+            List<EndpointOption> endpoints, Set<String> seen, String text, Path sourceFile, String routeFile,
+            int matchStart, String rawPath, String method) {
+        if (rawPath == null || rawPath.isBlank()) {
+            return;
+        }
+        String path = normalizeFrontendPath(rawPath);
+        if (!path.startsWith("/api/")) {
+            return;
+        }
+        String action = nearestFunctionName(text, matchStart).orElse("apiCall");
+        String component = nearestComponentName(text, matchStart).orElse(sourceFile.getFileName().toString());
+        String key = method + " " + path + " " + routeFile + " " + action;
+        if (!seen.add(key)) {
+            return;
+        }
+        String id = method + " " + path + " -> " + component + "@" + action;
+        endpoints.add(new EndpointOption(id, method, path, component, action, routeFile, "frontend"));
+    }
+
+    /**
+     * Angular/JHipster services declare a class field once, e.g.
+     * `public resourceUrl = SERVER_API_URL + 'api/users';`, then every method
+     * calls this.http.get(this.resourceUrl) / `${this.resourceUrl}/${id}`
+     * instead of writing the path inline (unlike this project's own api()
+     * helper) -- collect those field declarations per-file first so calls
+     * that reference them can be resolved.
+     */
+    private Map<String, String> angularResourceUrls(String text) {
+        Map<String, String> urls = new LinkedHashMap<>();
+        Matcher matcher = ANGULAR_RESOURCE_URL_FIELD.matcher(text);
+        while (matcher.find()) {
+            urls.put(matcher.group(1), matcher.group(3));
+        }
+        return urls;
+    }
+
+    private String resolveAngularUrl(String rawArg, Map<String, String> resourceUrls) {
+        String arg = rawArg.trim();
+
+        Matcher concat = ANGULAR_INLINE_CONCAT.matcher(arg);
+        if (concat.find()) {
+            return concat.group(2);
+        }
+
+        Matcher literal = ANGULAR_QUOTED_LITERAL.matcher(arg);
+        if (literal.matches()) {
+            String body = literal.group(2);
+            Matcher varRef = ANGULAR_TEMPLATE_VAR_REF.matcher(body);
+            if (varRef.find() && resourceUrls.containsKey(varRef.group(1))) {
+                return varRef.replaceFirst(Matcher.quoteReplacement(resourceUrls.get(varRef.group(1))));
+            }
+            return body;
+        }
+
+        Matcher bareRef = ANGULAR_BARE_REF.matcher(arg);
+        if (bareRef.matches() && resourceUrls.containsKey(bareRef.group(1))) {
+            return resourceUrls.get(bareRef.group(1));
+        }
+        return null;
     }
 
     private static String frontendMethod(String options) {
@@ -415,19 +634,40 @@ public class EndpointSequenceDiagramService {
     }
 
     private static Optional<String> nearestFunctionName(String text, int position) {
-        Matcher matcher = JS_FUNCTION.matcher(text.substring(0, position));
+        String head = text.substring(0, position);
+        Matcher matcher = JS_FUNCTION.matcher(head);
         String found = "";
         while (matcher.find()) {
             found = matcher.group(1) != null ? matcher.group(1) : matcher.group(2);
+        }
+        if (!found.isBlank()) {
+            return Optional.of(found);
+        }
+        // React/Node function declarations don't match TypeScript class
+        // methods like `create(user: IUser): Observable<...> {` -- Angular
+        // services are almost entirely this shape, so fall back to it.
+        Matcher tsMethod = TS_METHOD_START.matcher(head);
+        while (tsMethod.find()) {
+            found = tsMethod.group(1);
         }
         return found.isBlank() ? Optional.empty() : Optional.of(found);
     }
 
     private static Optional<String> nearestComponentName(String text, int position) {
-        Matcher matcher = Pattern.compile("function\\s+([A-Z][A-Za-z0-9_]*)\\s*\\(").matcher(text.substring(0, position));
+        String head = text.substring(0, position);
+        Matcher matcher = Pattern.compile("function\\s+([A-Z][A-Za-z0-9_]*)\\s*\\(").matcher(head);
         String found = "";
         while (matcher.find()) {
             found = matcher.group(1);
+        }
+        if (!found.isBlank()) {
+            return Optional.of(found);
+        }
+        // Angular services/components are classes, not top-level functions --
+        // "nearest enclosing class name" is the equivalent grouping label.
+        Matcher tsClass = TS_CLASS_NAME.matcher(head);
+        while (tsClass.find()) {
+            found = tsClass.group(1);
         }
         return found.isBlank() ? Optional.empty() : Optional.of(found);
     }

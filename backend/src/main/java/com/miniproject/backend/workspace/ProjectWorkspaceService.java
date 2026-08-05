@@ -21,6 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ProjectWorkspaceService {
 
     private final ProjectWorkspaceRepository repository;
+    private final ProjectWorkspaceSubpathRepository subpathRepository;
     private final ProjectContextMatcher projectContextMatcher;
     private final ProjectGraphClient projectGraphClient;
     private final GraphifyIndexService graphifyIndexService;
@@ -30,10 +31,12 @@ public class ProjectWorkspaceService {
 
     public ProjectWorkspaceService(
             ProjectWorkspaceRepository repository,
+            ProjectWorkspaceSubpathRepository subpathRepository,
             ProjectContextMatcher projectContextMatcher,
             ProjectGraphClient projectGraphClient,
             GraphifyIndexService graphifyIndexService) {
         this.repository = repository;
+        this.subpathRepository = subpathRepository;
         this.projectContextMatcher = projectContextMatcher;
         this.projectGraphClient = projectGraphClient;
         this.graphifyIndexService = graphifyIndexService;
@@ -182,7 +185,109 @@ public class ProjectWorkspaceService {
     public void remove(String id) {
         ProjectWorkspaceEntity target = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("No workspace found for id " + id));
+        subpathRepository.deleteByWorkspaceId(id);
         repository.delete(target);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProjectWorkspaceSubpathEntity> listSubpaths(String workspaceId) {
+        return subpathRepository.findByWorkspaceIdOrderByCreatedAtAsc(workspaceId);
+    }
+
+    @Transactional(readOnly = true)
+    public ProjectWorkspaceSubpathEntity getSubpath(String subpathId) {
+        return subpathRepository.findById(subpathId)
+                .orElseThrow(() -> new IllegalArgumentException("No sub-path found for id " + subpathId));
+    }
+
+    @Transactional
+    public ProjectWorkspaceSubpathEntity addSubpath(String workspaceId, String label, String subPath) {
+        if (label == null || label.isBlank()) {
+            throw new IllegalArgumentException("label is required");
+        }
+        if (subPath == null || subPath.isBlank()) {
+            throw new IllegalArgumentException("path is required");
+        }
+        repository.findById(workspaceId)
+                .orElseThrow(() -> new IllegalArgumentException("No workspace found for id " + workspaceId));
+        Path path = Path.of(subPath.trim());
+        if (!Files.isDirectory(path)) {
+            throw new IllegalArgumentException("Not a directory: " + path);
+        }
+        ProjectWorkspaceSubpathEntity entity = new ProjectWorkspaceSubpathEntity(
+                UUID.randomUUID().toString(), workspaceId, label.trim(), path.toString(), Instant.now());
+        return subpathRepository.save(entity);
+    }
+
+    @Transactional
+    public void removeSubpath(String workspaceId, String subpathId) {
+        ProjectWorkspaceSubpathEntity target = subpathRepository.findById(subpathId)
+                .orElseThrow(() -> new IllegalArgumentException("No sub-path found for id " + subpathId));
+        if (!target.getWorkspaceId().equals(workspaceId)) {
+            throw new IllegalArgumentException("Sub-path does not belong to this workspace");
+        }
+        subpathRepository.delete(target);
+    }
+
+    /**
+     * Indexes a sub-path's own codebase-memory-mcp architecture graph, under a
+     * name distinct from the parent workspace ("{workspace} :: {label}") so
+     * Project Overview can hold a ready graph for the whole project AND each
+     * sub-path at once, switching between them without re-indexing on every
+     * dropdown change. Mirrors indexAsync()'s single-background-thread +
+     * repository.findById/save pattern for the same @Transactional-proxy reason.
+     */
+    @Transactional
+    public ProjectWorkspaceSubpathEntity indexSubpath(String workspaceId, String subpathId) {
+        ProjectWorkspaceEntity workspace = repository.findById(workspaceId)
+                .orElseThrow(() -> new IllegalArgumentException("No workspace found for id " + workspaceId));
+        ProjectWorkspaceSubpathEntity subpath = subpathRepository.findById(subpathId)
+                .orElseThrow(() -> new IllegalArgumentException("No sub-path found for id " + subpathId));
+        if (!subpath.getWorkspaceId().equals(workspaceId)) {
+            throw new IllegalArgumentException("Sub-path does not belong to this workspace");
+        }
+        Path path = Path.of(subpath.getPath());
+        if (!Files.isDirectory(path)) {
+            throw new IllegalArgumentException("Path no longer exists: " + path);
+        }
+
+        String indexedProjectName = sanitizeProjectName(workspace.getName() + "-" + subpath.getLabel());
+        subpath.markIndexing(indexedProjectName);
+        ProjectWorkspaceSubpathEntity saved = subpathRepository.save(subpath);
+        indexSubpathAsync(saved.getId(), indexedProjectName, path);
+        return saved;
+    }
+
+    /**
+     * codebase-memory-mcp normalizes project names differently between its
+     * own index_repository and get_architecture tools when the name has
+     * spaces or punctuation (e.g. "Foo (test) :: Bar" comes back indexed as
+     * "Foo-test-Bar" but queried as "Foo_test_Bar", a 404) -- pre-sanitizing
+     * here to the same hyphen-only shape it already settles on removes any
+     * room for the two tools to disagree. Same root cause documented for
+     * plain workspace names elsewhere in this codebase; this just applies it
+     * to the generated "{workspace}-{sub-path label}" names too.
+     */
+    private static String sanitizeProjectName(String raw) {
+        String cleaned = raw.replaceAll("[^A-Za-z0-9]+", "-").replaceAll("-{2,}", "-").replaceAll("^-|-$", "");
+        return cleaned.isBlank() ? "project" : cleaned;
+    }
+
+    private void indexSubpathAsync(String subpathId, String indexedProjectName, Path path) {
+        indexingExecutor.submit(() -> {
+            try {
+                projectGraphClient.indexProject(path.toString(), indexedProjectName);
+                subpathRepository.findById(subpathId).ifPresent(entity -> {
+                    entity.markIndexReady();
+                    subpathRepository.save(entity);
+                });
+            } catch (RuntimeException e) {
+                subpathRepository.findById(subpathId).ifPresent(entity -> {
+                    entity.markIndexFailed(e.getMessage());
+                    subpathRepository.save(entity);
+                });
+            }
+        });
     }
 
     private void deactivateCurrent() {
