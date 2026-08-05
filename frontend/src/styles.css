@@ -1212,6 +1212,19 @@ button {
   color: #72e4dc;
 }
 
+.hermes-setup-embedded {
+  display: grid;
+  gap: 1rem;
+}
+
+.project-control-switchboard .hermes-setup-embedded > .tracker-panel-head h2 {
+  color: #eaf6f5;
+}
+
+.project-control-switchboard .hermes-setup-embedded > .tracker-panel-head p {
+  color: rgba(234, 246, 245, 0.72);
+}
+
 .project-switchboard-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -4649,6 +4662,45 @@ button {
   white-space: nowrap;
 }
 
+.trending-candidate-list {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.trending-candidate {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  background: var(--paper-sunken);
+}
+
+.trending-candidate-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.4rem;
+}
+
+.trending-candidate-head strong {
+  color: var(--ink);
+  font-size: 0.92rem;
+}
+
+.trending-candidate-stars {
+  color: var(--ink-faint);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.trending-candidate p {
+  margin: 0.2rem 0 0;
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
 .calendar-notification-panel {
   display: grid;
   gap: 0.45rem;
@@ -6083,6 +6135,25 @@ h3 {
   font-size: 0.98rem;
 }
 
+.screen-back-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  margin: -0.45rem 0 1rem;
+}
+
+.screen-back-bar .btn {
+  gap: 0.35rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 8px 22px rgba(12, 30, 38, 0.06);
+}
+
+.screen-back-bar .btn span {
+  font-size: 1rem;
+  line-height: 1;
+}
+
 .start-here-panel {
   display: flex;
   justify-content: space-between;
@@ -7092,6 +7163,23 @@ h3 {
 .muted-note {
   font-size: 0.82rem;
   color: var(--ink-faint);
+}
+
+.collapsible-advanced {
+  margin: 0.75rem 0;
+  padding: 0.6rem 0.9rem;
+  border: 1px dashed var(--border, #d8d8e0);
+  border-radius: 8px;
+}
+
+.collapsible-advanced summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.collapsible-advanced .muted-note {
+  margin: 0.5rem 0;
 }
 
 .ticket-source-card {
@@ -11797,4 +11885,597 @@ textarea:focus-visible {
     max-height: none;
     margin-bottom: 0.9rem;
   }
+}
+
+/* ---------- Scope creep check (PR diff vs. declared affected modules) ---------- */
+
+.scope-creep-panel {
+  display: grid;
+  gap: 0.7rem;
+  margin: 0.9rem 0;
+  padding: 0.9rem;
+  border: 1px solid rgba(197, 140, 35, 0.28);
+  border-radius: 16px;
+  background: rgba(255, 248, 231, 0.55);
+}
+
+.scope-creep-head {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.scope-creep-head strong {
+  color: var(--ink);
+  font-size: 0.92rem;
+}
+
+.scope-creep-head p {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.scope-creep-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.scope-creep-item {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 12px;
+  border-left: 4px solid var(--line);
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.scope-creep-item.tone-warn {
+  border-left-color: var(--rust);
+}
+
+.scope-creep-item.tone-info {
+  border-left-color: var(--teal);
+}
+
+.scope-creep-kind {
+  display: inline-flex;
+  align-self: start;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.scope-creep-item.tone-warn .scope-creep-kind {
+  background: var(--rust-soft);
+  color: var(--rust);
+}
+
+.scope-creep-item.tone-info .scope-creep-kind {
+  background: var(--teal-soft);
+  color: var(--teal-strong);
+}
+
+.scope-creep-item code {
+  color: var(--ink);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.scope-creep-item p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+/* ---------- Requirement Triage information hierarchy pass ----------
+   Goal: the decision hero is the clear #1 thing on the page, the evidence
+   panel collapses into named group counts instead of showing every card
+   flat, and short single-sentence cards don't look like empty whitespace. */
+
+.triage-decision-bar {
+  padding: 1.35rem 1.5rem;
+  border-width: 1px;
+  border-radius: 18px;
+  box-shadow: 0 18px 44px rgba(24, 43, 52, 0.1);
+}
+
+.triage-decision-copy h2 {
+  font-size: 1.5rem;
+}
+
+.triage-decision-reason {
+  margin: 0.4rem 0 0;
+  color: var(--ink-faint);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.triage-summary-card {
+  padding: 0.75rem 0.9rem;
+  gap: 0.4rem;
+}
+
+.triage-summary-card p {
+  line-height: 1.4;
+}
+
+.related-tickets-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.7rem;
+  margin: 0 0 1rem;
+}
+
+.related-tickets-list {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.related-ticket-card {
+  flex: 1 1 280px;
+  min-width: 0;
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid rgba(11, 95, 87, 0.16);
+  border-radius: 12px;
+  background: var(--teal-soft);
+}
+
+.related-ticket-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.related-ticket-score {
+  color: var(--teal-strong);
+  font-size: 0.72rem;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.related-ticket-card p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.evidence-trace-groups {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.evidence-trace-group {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.evidence-trace-group summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.7rem 0.9rem;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.evidence-trace-group summary::-webkit-details-marker {
+  display: none;
+}
+
+.evidence-trace-group summary::before {
+  content: "+";
+  order: -1;
+  margin-right: 0.55rem;
+  color: var(--teal-strong);
+  font-weight: 950;
+}
+
+.evidence-trace-group[open] summary::before {
+  content: "-";
+}
+
+.evidence-trace-group summary small {
+  margin-left: auto;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: var(--teal-soft);
+  color: var(--teal-strong);
+  font-size: 0.72rem;
+  font-weight: 950;
+}
+
+.evidence-trace-group .evidence-trace-grid {
+  padding: 0 0.9rem 0.9rem;
+}
+
+/* ---------- Sidebar navigation premium pass ---------- */
+
+.workflow-rail {
+  position: relative;
+  padding: 1.45rem 1.18rem 1.7rem;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(52, 190, 194, 0.12), transparent 28%),
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(180deg, #0b2025 0%, #09181d 62%, #081419 100%);
+  background-size: auto, 42px 42px, auto;
+}
+
+.rail-section {
+  margin-bottom: 1.15rem;
+}
+
+.rail-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.7rem;
+  color: rgba(228, 243, 244, 0.58);
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.13em;
+}
+
+.rail-label::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: linear-gradient(90deg, rgba(102, 214, 223, 0.22), transparent);
+}
+
+.rail-project-card,
+.rail-current-card {
+  border: 1px solid rgba(143, 177, 183, 0.2);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.035)),
+    rgba(8, 22, 27, 0.52);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 18px 38px rgba(0, 0, 0, 0.14);
+}
+
+.rail-project-card {
+  gap: 0.62rem;
+  padding: 1rem;
+}
+
+.rail-project-card strong {
+  font-size: 1rem;
+  letter-spacing: 0;
+}
+
+.rail-project-card span {
+  color: rgba(228, 243, 244, 0.64);
+}
+
+.rail-project-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.rail-project-actions .btn {
+  min-height: 38px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #10212a;
+  font-size: 0.76rem;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.16);
+}
+
+.rail-project-actions .btn:hover,
+.rail-project-actions .btn:focus-visible {
+  border-color: rgba(102, 214, 223, 0.5);
+  background: #ffffff;
+}
+
+.rail-nav {
+  gap: 0.56rem;
+}
+
+.rail-nav button {
+  position: relative;
+  min-height: 64px;
+  display: grid;
+  grid-template-columns: 2.15rem minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 0.72rem;
+  row-gap: 0.12rem;
+  align-items: center;
+  padding: 0.72rem 0.82rem;
+  border: 1px solid rgba(210, 230, 233, 0.13);
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.065), rgba(255, 255, 255, 0.025)),
+    rgba(255, 255, 255, 0.018);
+  color: rgba(239, 248, 249, 0.82);
+  overflow: hidden;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.rail-nav button::before {
+  content: "AI";
+  grid-row: 1 / span 2;
+  width: 2.1rem;
+  height: 2.1rem;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(149, 205, 210, 0.22);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03)),
+    rgba(5, 18, 22, 0.42);
+  color: rgba(235, 250, 250, 0.88);
+  font-size: 0.68rem;
+  font-weight: 950;
+  letter-spacing: 0.02em;
+}
+
+.rail-nav:not(.compact) button:nth-child(1)::before {
+  content: "IN";
+}
+
+.rail-nav:not(.compact) button:nth-child(2)::before {
+  content: "AI";
+}
+
+.rail-nav:not(.compact) button:nth-child(3)::before {
+  content: "PM";
+}
+
+.rail-nav:not(.compact) button:nth-child(4)::before {
+  content: "KB";
+}
+
+.rail-nav:not(.compact) button:nth-child(5)::before {
+  content: "HX";
+}
+
+.rail-nav:not(.compact) button:nth-child(6)::before {
+  content: "VER";
+}
+
+.rail-nav:not(.compact) button:nth-child(7)::before {
+  content: "TR";
+}
+
+.rail-nav:not(.compact) button:nth-child(8)::before {
+  content: "APP";
+}
+
+.rail-nav button::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(98, 214, 223, 0.14), transparent 42%);
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.rail-nav button:hover,
+.rail-nav button:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(102, 214, 223, 0.35);
+  background:
+    linear-gradient(135deg, rgba(102, 214, 223, 0.11), rgba(255, 255, 255, 0.045)),
+    rgba(255, 255, 255, 0.025);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.16);
+}
+
+.rail-nav button:hover::after,
+.rail-nav button:focus-visible::after,
+.rail-nav button.active::after {
+  opacity: 1;
+}
+
+.rail-nav button.active {
+  border-color: rgba(102, 214, 223, 0.6);
+  background:
+    linear-gradient(135deg, rgba(31, 90, 97, 0.9), rgba(15, 53, 61, 0.86)),
+    rgba(255, 255, 255, 0.045);
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.2), inset 3px 0 0 #66d6df;
+}
+
+.rail-nav button.active::before {
+  border-color: rgba(102, 214, 223, 0.7);
+  background: linear-gradient(145deg, #0b6b66, #1aa6b7);
+  color: #ffffff;
+}
+
+.rail-nav button.intake-nav-item {
+  border-color: rgba(102, 214, 223, 0.24);
+  background:
+    radial-gradient(circle at 92% 12%, rgba(102, 214, 223, 0.12), transparent 34%),
+    linear-gradient(135deg, rgba(22, 83, 91, 0.32), rgba(255, 255, 255, 0.035));
+}
+
+.rail-nav button.intake-nav-item::after {
+  content: "Jira + Manual";
+  inset: auto 0.72rem auto auto;
+  top: 0.72rem;
+  width: auto;
+  max-width: 5.7rem;
+  padding: 0.18rem 0.42rem;
+  border: 1px solid rgba(181, 226, 230, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  opacity: 1;
+  color: rgba(238, 251, 251, 0.72);
+  font-size: 0.56rem;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  line-height: 1.1;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.rail-nav button.intake-nav-item span,
+.rail-nav button.intake-nav-item small {
+  padding-right: 5.6rem;
+}
+
+.rail-nav button > span,
+.rail-nav button > small {
+  position: relative;
+  z-index: 1;
+  grid-column: 2;
+  min-width: 0;
+  padding-right: 0;
+}
+
+.rail-nav span {
+  color: rgba(248, 253, 253, 0.94);
+  font-size: 0.86rem;
+  font-weight: 820;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.rail-nav small {
+  color: rgba(219, 238, 240, 0.58);
+  font-size: 0.68rem;
+  font-weight: 660;
+  line-height: 1.28;
+}
+
+.rail-nav.compact {
+  gap: 0.45rem;
+}
+
+.rail-nav.compact button {
+  min-height: 54px;
+  border-radius: 14px;
+  grid-template-columns: 1.8rem minmax(0, 1fr);
+  padding: 0.62rem 0.7rem;
+}
+
+.rail-nav.compact button::before {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 10px;
+  font-size: 0.58rem;
+}
+
+.rail-nav.compact button:nth-child(1)::before {
+  content: "M";
+}
+
+.rail-nav.compact button:nth-child(2)::before {
+  content: "QA";
+}
+
+.rail-nav.compact button:nth-child(3)::before {
+  content: "EV";
+}
+
+.rail-nav.compact button:nth-child(4)::before {
+  content: "DB";
+}
+
+.rail-current-card {
+  margin: 1.1rem 0;
+  padding: 0.95rem;
+}
+
+.rail-current-card strong {
+  font-size: 0.95rem;
+}
+
+@media (max-width: 980px) {
+  .rail-nav {
+    display: flex;
+    align-items: stretch;
+  }
+
+  .rail-nav button {
+    min-width: 220px;
+  }
+}
+
+/* Replace letter badges with icon glyphs for the sidebar menu. */
+
+.rail-nav button::before {
+  content: "";
+  background:
+    var(--rail-icon) center / 1.08rem 1.08rem no-repeat,
+    linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03)),
+    rgba(5, 18, 22, 0.42);
+}
+
+.rail-nav button.active::before {
+  background:
+    var(--rail-icon) center / 1.08rem 1.08rem no-repeat,
+    linear-gradient(145deg, #0b6b66, #1aa6b7);
+}
+
+.rail-nav:not(.compact) button:nth-child(1) {
+  --rail-icon: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v13A2.5 2.5 0 0 1 17.5 21h-11A2.5 2.5 0 0 1 4 18.5v-13Z' stroke='%23EAFBFB' stroke-width='2'/%3E%3Cpath d='M8 8h8M8 12h8M8 16h5' stroke='%23EAFBFB' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+.rail-nav:not(.compact) button:nth-child(2) {
+  --rail-icon: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M5 7.5A3.5 3.5 0 0 1 8.5 4h7A3.5 3.5 0 0 1 19 7.5v4A3.5 3.5 0 0 1 15.5 15H11l-4 4v-4.1A3.5 3.5 0 0 1 5 11.5v-4Z' stroke='%23EAFBFB' stroke-width='2' stroke-linejoin='round'/%3E%3Cpath d='M9 9h6M9 12h3' stroke='%23EAFBFB' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+.rail-nav:not(.compact) button:nth-child(3) {
+  --rail-icon: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M4 17h16M7 17V9M12 17V5M17 17v-6' stroke='%23EAFBFB' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M6 9h2M11 5h2M16 11h2' stroke='%2366D6DF' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+.rail-nav:not(.compact) button:nth-child(4) {
+  --rail-icon: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M4 5h7v6H4V5ZM13 5h7v6h-7V5ZM4 13h7v6H4v-6ZM13 13h7v6h-7v-6Z' stroke='%23EAFBFB' stroke-width='2' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+.rail-nav:not(.compact) button:nth-child(5) {
+  --rail-icon: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M5 12h10M12 6l6 6-6 6' stroke='%23EAFBFB' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M4 5h5M4 19h5' stroke='%2366D6DF' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+.rail-nav:not(.compact) button:nth-child(6) {
+  --rail-icon: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M7 5v10a4 4 0 0 0 4 4h6' stroke='%23EAFBFB' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M7 5h4M17 19l-3-3M17 19l-3 3M7 9h6a4 4 0 0 1 4 4v1' stroke='%2366D6DF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+.rail-nav:not(.compact) button:nth-child(7) {
+  --rail-icon: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M4 16l5-5 4 4 7-8' stroke='%23EAFBFB' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M15 7h5v5' stroke='%2366D6DF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+.rail-nav:not(.compact) button:nth-child(8) {
+  --rail-icon: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M8 8V5a2 2 0 0 1 4 0v3M16 8V5a2 2 0 0 1 4 0v3M5 12h14M6 8h12v5a6 6 0 0 1-12 0V8Z' stroke='%23EAFBFB' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+.rail-nav.compact button:nth-child(1) {
+  --rail-icon: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M6 12h12M6 7h12M6 17h8' stroke='%23EAFBFB' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+.rail-nav.compact button:nth-child(2) {
+  --rail-icon: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M8 12l3 3 5-7' stroke='%23EAFBFB' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M5 4h14v16H5V4Z' stroke='%23EAFBFB' stroke-width='2'/%3E%3C/svg%3E");
+}
+
+.rail-nav.compact button:nth-child(3) {
+  --rail-icon: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M12 3l8 4v5c0 5-3.4 8-8 9-4.6-1-8-4-8-9V7l8-4Z' stroke='%23EAFBFB' stroke-width='2' stroke-linejoin='round'/%3E%3Cpath d='M9 12l2 2 4-4' stroke='%2366D6DF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+.rail-nav.compact button:nth-child(4) {
+  --rail-icon: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cellipse cx='12' cy='6' rx='7' ry='3' stroke='%23EAFBFB' stroke-width='2'/%3E%3Cpath d='M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6' stroke='%23EAFBFB' stroke-width='2'/%3E%3C/svg%3E");
 }

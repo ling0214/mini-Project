@@ -23,6 +23,7 @@ import java.util.regex.Pattern;
 public class RequirementAnalysisSkill {
 
     private static final Pattern IDENTIFIER = Pattern.compile("[a-zA-Z_][a-zA-Z0-9_]{2,}");
+    private static final Pattern URL = Pattern.compile("https?://\\S+");
     private static final Set<String> STOPWORDS = Set.of(
             "the", "a", "an", "and", "or", "but", "for", "with", "this", "that", "from", "into",
             "should", "would", "will", "when", "where", "how", "what", "does", "add", "adding",
@@ -52,7 +53,13 @@ public class RequirementAnalysisSkill {
     }
 
     private Set<String> extractCandidateAreas(String description) {
-        Matcher matcher = IDENTIFIER.matcher(description);
+        // URLs (the ticket's own Jira/source link, or a manually pasted
+        // GitHub evidence link -- see RequirementAnalysisRequest.codeEvidenceUrl)
+        // tokenize into meaningless fragments (github, com, atlassian, browse,
+        // php, ...) that would otherwise pollute potential_affected_areas /
+        // scope_boundary.in_scope. Strip them before extracting candidates.
+        String withoutUrls = URL.matcher(description).replaceAll(" ");
+        Matcher matcher = IDENTIFIER.matcher(withoutUrls);
         Set<String> candidates = new LinkedHashSet<>();
         while (matcher.find()) {
             String token = matcher.group();

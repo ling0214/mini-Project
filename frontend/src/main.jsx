@@ -93,6 +93,7 @@ const EMPTY_TICKET = {
   acceptanceCriteria: "",
   comments: "",
   codeSnippet: "",
+  codeEvidenceUrl: "",
 };
 
 const SAMPLE_TICKET = {
@@ -181,13 +182,13 @@ const QUICK_ACTION_EVENT = "analyst-workbench:quick-action";
 
 // Still dummy/prototype data (see each component's own "Dummy view" subtitle) --
 // ordered by how close each is to being wired to real data + workflow value,
-// highest first. Hermes Tracker used to be here too; it moved up to
+// highest first. Hermes Incident Tracker used to be here too; it moved up to
 // Workspace once it was wired to real data.
 const ENHANCEMENT_TOOLS = [
-  ["memory-center", "Memory", "Similar past changes"],
-  ["testing-sync", "Testing Sync", "Pass/fail and Jira updates"],
-  ["evidence-gate", "Evidence Gate", "RCA readiness checklist"],
-  ["db-diagnostics", "DB Checks", "Evidence request flow"],
+  // ["memory-center", "Memory", "Similar past changes"],
+  // ["testing-sync", "Testing Sync", "Pass/fail and Jira updates"],
+  // ["evidence-gate", "Evidence Gate", "RCA readiness checklist"],
+  // ["db-diagnostics", "DB Checks", "Evidence request flow"],
 ];
 
 const TESTING_SYNC_COLUMNS = [
@@ -271,7 +272,7 @@ const MEMORY_MATCHES = [
     score: 82,
     title: "Donation status filter change",
     outcome: "Affected donor browse page, aid request model, and notification tests.",
-    reuse: "Reuse regression cases for approved/pending status visibility.",
+    reuse: "Reuse regression cas es for approved/pending status visibility.",
   },
   {
     score: 68,
@@ -423,7 +424,7 @@ function ConnectProjectScreen({ onConnected, onCancel, onActiveRemoved }) {
   // Debounced: as the analyst types/browses to a path, check whether Hermes
   // already has tracked activity under it (or an ancestor/descendant of it —
   // see HermesStatusService.pathsRelated), so they don't have to guess which
-  // folder "unlocks" the Hermes Tracker page before ever connecting it.
+  // folder "unlocks" the Hermes Incident Tracker page before ever connecting it.
   useEffect(() => {
     const trimmed = localPath.trim();
     if (!trimmed) {
@@ -545,7 +546,7 @@ function ConnectProjectScreen({ onConnected, onCancel, onActiveRemoved }) {
             {hermesMatchCount !== null && (
               <p className={`hermes-match-hint ${hermesMatchCount > 0 ? "found" : "none"}`}>
                 {hermesMatchCount > 0
-                  ? `This path matches ${hermesMatchCount} tracked Hermes task${hermesMatchCount === 1 ? "" : "s"} — connecting here will show its progress on the Hermes Tracker page.`
+                  ? `This path matches ${hermesMatchCount} tracked Hermes task${hermesMatchCount === 1 ? "" : "s"} — connecting here will show its progress on the Hermes Incident Tracker page.`
                   : "No Hermes activity tracked under this path yet."}
               </p>
             )}
@@ -580,35 +581,7 @@ function ConnectProjectScreen({ onConnected, onCancel, onActiveRemoved }) {
               )}
             </div>
           </section>
-
-          <aside className="project-telemetry-panel">
-            <div className="project-telemetry-head">
-              <span className="source-pill">Overview project tracker</span>
-              <h2>Project control functions</h2>
-              <p>Import a repo, understand the project, switch the active workspace, and monitor ticket progress before the analyst handoff.</p>
-            </div>
-            <div className="project-health-grid">
-              <span><strong>{activeProject ? 1 : 0}</strong> Active project</span>
-              <span><strong>{readyCount}</strong> Ready repo</span>
-              <span><strong>{indexingCount}</strong> Indexing</span>
-              <span><strong>4</strong> Ticket status</span>
-            </div>
-            <div className="project-pipeline">
-              <span>Import repo</span>
-              <span>Overview diagram</span>
-              <span>Track phase</span>
-              <span>Kanban status</span>
-            </div>
-            <div className="project-integration-row">
-              <span>Graphify</span>
-              <span>Codebase Memory</span>
-              <span>Jira</span>
-              <span>Hermes handoff</span>
-            </div>
-          </aside>
-        </div>
-
-        {projects.length > 0 && (
+      {projects.length > 0 && (
           <section className="project-control-switchboard">
             <div className="project-process-board-head">
               <div>
@@ -651,6 +624,87 @@ function ConnectProjectScreen({ onConnected, onCancel, onActiveRemoved }) {
             </div>
           </section>
         )}
+
+          {/* <aside className="project-telemetry-panel">
+            <div className="project-telemetry-head">
+              <span className="source-pill">Overview project tracker</span>
+              <h2>Project control functions</h2>
+              <p>Import a repo, understand the project, switch the active workspace, and monitor ticket progress before the analyst handoff.</p>
+            </div>
+            <div className="project-health-grid">
+              <span><strong>{activeProject ? 1 : 0}</strong> Active project</span>
+              <span><strong>{readyCount}</strong> Ready repo</span>
+              <span><strong>{indexingCount}</strong> Indexing</span>
+              <span><strong>4</strong> Ticket status</span>
+            </div>
+            <div className="project-pipeline">
+              <span>Import repo</span>
+              <span>Overview diagram</span>
+              <span>Track phase</span>
+              <span>Kanban status</span>
+            </div>
+            <div className="project-integration-row">
+              <span>Graphify</span>
+              <span>Codebase Memory</span>
+              <span>Jira</span>
+              <span>Hermes handoff</span>
+            </div>
+          </aside> */}
+        </div>
+
+        <section className="project-control-switchboard">
+          <div className="project-process-board-head">
+            <div>
+              <label className="field-label">Hermes bridge setup</label>
+              <p>Set this up now, before heading into the workbench — repo intake channels, storage paths, and PR-package flow, all in one place.</p>
+            </div>
+          </div>
+          <HermesSetupWizardPage workspace={activeProject} embedded />
+        </section>
+
+        {/* {projects.length > 0 && (
+          <section className="project-control-switchboard">
+            <div className="project-process-board-head">
+              <div>
+                <label className="field-label">Project switchboard</label>
+                <p>Switch the active repo used by Repo AI, project overview, impact analysis, and ticket status tracking.</p>
+              </div>
+              <span>{projects.length} project{projects.length === 1 ? "" : "s"}</span>
+            </div>
+            <div className="project-switchboard-grid">
+              {projects.map((project) => (
+                <article key={project.id} className={project.active ? "active" : ""}>
+                  <div>
+                    <div className="project-switchboard-title">
+                      <strong>{project.name}</strong>
+                      {project.active && <span className="tag good">Active</span>}
+                    </div>
+                    <span>{project.local_path}</span>
+                    <small>
+                      Code graph: {indexStatusLabel(project.index_status, project.index_error)} | Diagram graph:{" "}
+                      {indexStatusLabel(project.graphify_index_status, project.graphify_index_error)}
+                    </small>
+                  </div>
+                  <div className="project-switchboard-actions">
+                    {!project.active && (
+                      <button className="btn ghost compact" type="button" disabled={loading} onClick={() => activate(project.id)}>
+                        Switch project
+                      </button>
+                    )}
+                    <button
+                      className="btn ghost compact danger"
+                      type="button"
+                      disabled={removingId === project.id}
+                      onClick={() => remove(project)}
+                    >
+                      {removingId === project.id ? "Removing..." : "Remove"}
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        )} */}
 
       </section>
     </main>
@@ -2244,6 +2298,11 @@ function AnalystWorkflow({ workspace, onWorkspaceUpdated, onViewProjectOverview,
     clearWorkflowArtifacts();
   }
 
+  function returnToWorkQueue() {
+    setPhase("inbox");
+    setInboxView("queue");
+  }
+
   function selectInboxTicket(nextTicket) {
     setTicket({ ...EMPTY_TICKET, ...nextTicket });
     clearWorkflowArtifacts();
@@ -2427,15 +2486,25 @@ function AnalystWorkflow({ workspace, onWorkspaceUpdated, onViewProjectOverview,
             onReviewSummary={reviewSummary}
             onReloadSummaryHandoffs={loadSummaryHandoffs}
             onRestart={reset}
+            onBack={() => setPhase("test")}
           />
         )}
-        {phase === "testing-sync" && <TestingSyncPrototype workspace={workspace} />}
-        {phase === "project-tracker" && <ProjectTrackerPage workspace={workspace} onWorkspaceUpdated={onWorkspaceUpdated} onSwitchProject={onSwitchProject} />}
-        {phase === "ticket-kanban" && <TicketKanbanPage workspace={workspace} />}
-        {phase === "db-diagnostics" && <DbDiagnosticsPrototype workspace={workspace} />}
-        {phase === "evidence-gate" && <EvidenceGatePrototype workspace={workspace} />}
-        {phase === "hermes-tracker" && <HermesTrackerPrototype workspace={workspace} />}
-        {phase === "memory-center" && <MemoryCenterPrototype workspace={workspace} />}
+        {phase === "testing-sync" && <TestingSyncPrototype workspace={workspace} onBack={returnToWorkQueue} />}
+        {phase === "project-tracker" && (
+          <ProjectTrackerPage
+            workspace={workspace}
+            onWorkspaceUpdated={onWorkspaceUpdated}
+            onSwitchProject={onSwitchProject}
+            onBack={returnToWorkQueue}
+          />
+        )}
+        {phase === "ticket-kanban" && <TicketKanbanPage workspace={workspace} onBack={returnToWorkQueue} />}
+        {phase === "db-diagnostics" && <DbDiagnosticsPrototype workspace={workspace} onBack={returnToWorkQueue} />}
+        {phase === "evidence-gate" && <EvidenceGatePrototype workspace={workspace} onBack={returnToWorkQueue} />}
+        {phase === "hermes-tracker" && <HermesTrackerPrototype workspace={workspace} onBack={returnToWorkQueue} />}
+        {phase === "hermes-version-advisor" && <HermesVersionAdvisorPage workspace={workspace} onBack={returnToWorkQueue} />}
+        {phase === "hermes-trending-digest" && <HermesTrendingDigestPage onBack={returnToWorkQueue} />}
+        {phase === "memory-center" && <MemoryCenterPrototype workspace={workspace} onBack={returnToWorkQueue} />}
       </main>
     </>
   );
@@ -2490,10 +2559,13 @@ function AnalystWorkflowRail({
         <div className="rail-nav">
           {/* Ordered by where an analyst actually spends time day to day:
               bring work in -> understand the repo -> monitor progress
-              (two views) -> check what's happened downstream at Hermes ->
-              one-time setup last. Hermes Tracker moved here from
-              Enhancement Lab now that it's wired to real data
-              (GET /api/hermes/status/current), not the earlier dummy view. */}
+              (two views) -> check what's happened downstream at Hermes.
+              Hermes Incident Tracker moved here from Enhancement Lab now
+              that it's wired to real data (GET /api/hermes/status/current),
+              not the earlier dummy view. Hermes Setup Wizard moved out of
+              this rail entirely — it now lives in the Project Control
+              Center (ConnectProjectScreen) so setup happens up front,
+              before an analyst ever reaches these workbench pages. */}
           <button
             className={phase === "inbox" && (inboxView === "jira" || inboxView === "manual") ? "active intake-nav-item" : "intake-nav-item"}
             type="button"
@@ -2537,8 +2609,24 @@ function AnalystWorkflowRail({
             type="button"
             onClick={() => onOpenPrototype("hermes-tracker")}
           >
-            <span>Hermes Tracker</span>
+            <span>Hermes Incident Tracker</span>
             <small>Follow handoff status</small>
+          </button>
+          {/* <button
+            className={phase === "hermes-version-advisor" ? "active" : ""}
+            type="button"
+            onClick={() => onOpenPrototype("hermes-version-advisor")}
+          >
+            <span>Hermes Version Control</span>
+            <small>Which upstream commit to adopt</small>
+          </button> */}
+          <button
+            className={phase === "hermes-trending-digest" ? "active" : ""}
+            type="button"
+            onClick={() => onOpenPrototype("hermes-trending-digest")}
+          >
+            <span>Trending Digest</span>
+            <small>Weekly GitHub Trending scan</small>
           </button>
           <button
             className={phase === "inbox" && inboxView === "apps" ? "active" : ""}
@@ -3928,6 +4016,7 @@ function TicketIntakeForm({ ticket, onChange, onArtifact }) {
           acceptance_criteria: ticket.acceptanceCriteria,
           comments: ticket.comments,
           code_snippet: ticket.codeSnippet,
+          code_evidence_url: ticket.codeEvidenceUrl,
         },
       });
       onArtifact(normalizeRequirementResponse(response));
@@ -3980,13 +4069,18 @@ function TicketIntakeForm({ ticket, onChange, onArtifact }) {
             Paste the relevant GitHub file link, PR diff, function, class, or config block here. The platform reads it
             as limited evidence without cloning or indexing the full repo.
           </p>
+          <p className="muted-note">
+            The same idea applies to any connected system that can't be granted full workspace-root access — e.g. a
+            Hermes deployment where a team isn't ready to hand an autonomous agent the whole repo. Paste the specific
+            evidence instead of connecting the project.
+          </p>
         </div>
         <label className="restricted-code-field">
           GitHub / PR / file URL
           <input
             type="text"
-            value={ticket.sourceUrl || ""}
-            onChange={(event) => update("sourceUrl", event.target.value)}
+            value={ticket.codeEvidenceUrl || ""}
+            onChange={(event) => update("codeEvidenceUrl", event.target.value)}
             placeholder="https://github.com/org/repo/blob/main/app/Http/Controllers/DonationController.php"
           />
         </label>
@@ -4287,6 +4381,7 @@ function ReportPhase({
   onReviewSummary,
   onReloadSummaryHandoffs,
   onRestart,
+  onBack,
 }) {
   const reqResult = reqArtifact?.result || {};
   const impactResult = impactArtifact?.result || {};
@@ -4329,6 +4424,9 @@ function ReportPhase({
           />
           {error && <ErrorBox message={error} />}
           <div className="action-row">
+            <button className="btn ghost" type="button" onClick={onBack}>
+              Back to test scenarios
+            </button>
             <button
               className="btn primary"
               type="button"
@@ -4389,6 +4487,9 @@ function ReportPhase({
             <pre>{JSON.stringify(summaryArtifact, null, 2)}</pre>
           </details>
           <div className="action-row">
+            <button className="btn ghost" type="button" onClick={onBack}>
+              Back to test scenarios
+            </button>
             <button className="btn ghost" type="button" onClick={onRestart}>
               Start new analysis
             </button>
@@ -4425,7 +4526,7 @@ function HandoffSummaryReport({ result }) {
   );
 }
 
-function ProjectTrackerPage({ workspace, onWorkspaceUpdated, onSwitchProject }) {
+function ProjectTrackerPage({ workspace, onWorkspaceUpdated, onSwitchProject, onBack }) {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -4515,6 +4616,7 @@ function ProjectTrackerPage({ workspace, onWorkspaceUpdated, onSwitchProject }) 
         title="Project delivery control"
         subtitle="Track connected projects, analysis readiness, and the current delivery phase before work is synced to Jira, QA, or Hermes."
       />
+      <ScreenBackBar onBack={onBack} label="Back to work queue" />
       <div className="tracker-command-strip">
         <div>
           <span className="source-pill">Active workspace</span>
@@ -4740,7 +4842,7 @@ function ProjectTrackerPage({ workspace, onWorkspaceUpdated, onSwitchProject }) 
   );
 }
 
-function TicketKanbanPage({ workspace }) {
+function TicketKanbanPage({ workspace, onBack }) {
   const [tickets, setTickets] = useState([]);
   const [hermesTasks, setHermesTasks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -4822,6 +4924,7 @@ function TicketKanbanPage({ workspace }) {
         title="Project ticket control board"
         subtitle="Real progress merged from mini-Project's own review phases and Hermes's reported incident status — no placeholder tickets."
       />
+      <ScreenBackBar onBack={onBack} label="Back to work queue" />
 
       <div className="kanban-command-panel">
         <div>
@@ -4913,7 +5016,7 @@ function TicketKanbanPage({ workspace }) {
   );
 }
 
-function TestingSyncPrototype({ workspace }) {
+function TestingSyncPrototype({ workspace, onBack }) {
   return (
     <section className="screen prototype-screen">
       <HeaderBlock
@@ -4921,6 +5024,7 @@ function TestingSyncPrototype({ workspace }) {
         title="Testing + progress sync loop"
         subtitle="Dummy view for pass, not-pass, and pending testing decisions that can later update Jira and Hermes without leaving the platform."
       />
+      <ScreenBackBar onBack={onBack} label="Back to work queue" />
       <div className="prototype-hero">
         <div>
           <span className="source-pill">Analyst control layer</span>
@@ -4961,7 +5065,7 @@ function TestingSyncPrototype({ workspace }) {
   );
 }
 
-function DbDiagnosticsPrototype({ workspace }) {
+function DbDiagnosticsPrototype({ workspace, onBack }) {
   return (
     <section className="screen prototype-screen">
       <HeaderBlock
@@ -4969,6 +5073,7 @@ function DbDiagnosticsPrototype({ workspace }) {
         title="DB diagnostic request flow"
         subtitle="Dummy view for cases where log or code evidence is not enough and the analyst needs a safe read-only DB check from a technical owner."
       />
+      <ScreenBackBar onBack={onBack} label="Back to work queue" />
       <div className="prototype-grid two">
         <section className="prototype-panel">
           <span className="source-pill">Evidence gap</span>
@@ -5009,7 +5114,7 @@ function DbDiagnosticsPrototype({ workspace }) {
   );
 }
 
-function EvidenceGatePrototype({ workspace }) {
+function EvidenceGatePrototype({ workspace, onBack }) {
   return (
     <section className="screen prototype-screen">
       <HeaderBlock
@@ -5017,6 +5122,7 @@ function EvidenceGatePrototype({ workspace }) {
         title="Evidence readiness gate"
         subtitle="Dummy checklist for deciding whether an RCA, impact analysis, or handoff is grounded enough to move forward."
       />
+      <ScreenBackBar onBack={onBack} label="Back to work queue" />
       <div className="prototype-hero evidence">
         <div>
           <span className="source-pill">Review gate</span>
@@ -5059,7 +5165,7 @@ function hermesStepState(stepLabel, currentStatus) {
   return "pending";
 }
 
-function HermesTrackerPrototype({ workspace }) {
+function HermesTrackerPrototype({ workspace, onBack }) {
   const [tracked, setTracked] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -5108,6 +5214,7 @@ function HermesTrackerPrototype({ workspace }) {
         title="Hermes handoff tracker"
         subtitle="Monitor reviewed analyst packages after they are handed off to Hermes, from intake acceptance to developer update, testing decision, and final summary."
       />
+      <ScreenBackBar onBack={onBack} label="Back to work queue" />
 
       <div className="hermes-command-center">
         <section className="hermes-hero-panel">
@@ -5355,7 +5462,771 @@ function hermesStepDescription(label) {
   return "Final analyst close summary is ready for reporting.";
 }
 
-function MemoryCenterPrototype({ workspace }) {
+const HERMES_WIZARD_STEPS = ["Project & platforms", "Platform details", "Storage paths", "PR package"];
+
+function linesToList(text) {
+  return (text || "")
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function normalizeRepoPath(path) {
+  return (path || "").trim().replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+}
+
+function findProfileForRepoPath(profiles, path) {
+  const target = normalizeRepoPath(path);
+  if (!target) return null;
+  const matches = profiles.filter((p) => normalizeRepoPath(p.repo_path) === target);
+  if (matches.length === 0) return null;
+  return matches.slice().sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))[0];
+}
+
+function HermesSetupWizardPage({ workspace, onBack, embedded = false }) {
+  const [step, setStep] = useState(0);
+  const [profileId, setProfileId] = useState(null);
+  const [profileName, setProfileName] = useState("");
+  const [savedProfiles, setSavedProfiles] = useState([]);
+  const [autoMatched, setAutoMatched] = useState(false);
+
+  const [repoPath, setRepoPath] = useState(workspace?.local_path || "");
+  const [platforms, setPlatforms] = useState(["discord"]);
+  const [discordChannelId, setDiscordChannelId] = useState("");
+  const [emailImapHost, setEmailImapHost] = useState("");
+  const [emailAccount, setEmailAccount] = useState("");
+  const [emailAllowedSendersText, setEmailAllowedSendersText] = useState("");
+  const [incidentReportsDir, setIncidentReportsDir] = useState("");
+  const [incidentExtractsDir, setIncidentExtractsDir] = useState("");
+  const [incidentDownloadsDir, setIncidentDownloadsDir] = useState("");
+  const [serverLogPath, setServerLogPath] = useState("");
+  const [prPackageEnabled, setPrPackageEnabled] = useState(false);
+  const [gitHost, setGitHost] = useState("");
+
+  const [artifact, setArtifact] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    loadProfiles();
+  }, []);
+
+  // Follow the connected project automatically: once both the workspace's
+  // local path and the saved-profiles list are known, load whichever saved
+  // profile already points at this repo -- no need to re-pick it from the
+  // dropdown every time the same project is reconnected. If nothing matches,
+  // just prefill the repo path for a fresh setup instead. workspace resolves
+  // asynchronously (ConnectProjectScreen loads the active project after
+  // mount), so this re-runs once it becomes available.
+  useEffect(() => {
+    if (!workspace?.local_path) {
+      return;
+    }
+    const match = findProfileForRepoPath(savedProfiles, workspace.local_path);
+    if (match) {
+      if (match.id !== profileId) {
+        setAutoMatched(true);
+        loadProfile(match.id);
+      }
+    } else if (!profileId) {
+      setRepoPath(workspace.local_path);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspace?.local_path, savedProfiles]);
+
+  function loadProfiles() {
+    api("/api/hermes/setup-profiles")
+      .then(setSavedProfiles)
+      .catch(() => setSavedProfiles([]));
+  }
+
+  async function loadProfile(id) {
+    if (!id) {
+      return;
+    }
+    setError("");
+    try {
+      const p = await api(`/api/hermes/setup-profiles/${id}`);
+      setProfileId(p.id);
+      setProfileName(p.name);
+      setRepoPath(p.repo_path || "");
+      setPlatforms(p.platforms && p.platforms.length ? p.platforms : ["discord"]);
+      setDiscordChannelId(p.discord_channel_id || "");
+      setEmailImapHost(p.email_imap_host || "");
+      setEmailAccount(p.email_account || "");
+      setEmailAllowedSendersText((p.email_allowed_senders || []).join("\n"));
+      setIncidentReportsDir(p.incident_reports_dir || "");
+      setIncidentExtractsDir(p.incident_extracts_dir || "");
+      setIncidentDownloadsDir(p.incident_downloads_dir || "");
+      setServerLogPath(p.server_log_path || "");
+      setPrPackageEnabled(Boolean(p.pr_package_enabled));
+      setGitHost(p.git_host || "");
+      setArtifact(null);
+      setStep(0);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  function startNew() {
+    setAutoMatched(false);
+    setProfileId(null);
+    setProfileName("");
+    setRepoPath(workspace?.local_path || "");
+    setPlatforms(["discord"]);
+    setDiscordChannelId("");
+    setEmailImapHost("");
+    setEmailAccount("");
+    setEmailAllowedSendersText("");
+    setIncidentReportsDir("");
+    setIncidentExtractsDir("");
+    setIncidentDownloadsDir("");
+    setServerLogPath("");
+    setPrPackageEnabled(false);
+    setGitHost("");
+    setArtifact(null);
+    setError("");
+    setStep(0);
+  }
+
+  function togglePlatform(name) {
+    setPlatforms((current) =>
+      current.includes(name) ? current.filter((p) => p !== name) : [...current, name],
+    );
+  }
+
+  function currentAnswers() {
+    return {
+      repo_path: repoPath.trim(),
+      platforms,
+      discord_channel_id: discordChannelId.trim() || null,
+      email_imap_host: emailImapHost.trim() || null,
+      email_account: emailAccount.trim() || null,
+      email_allowed_senders: linesToList(emailAllowedSendersText),
+      incident_reports_dir: incidentReportsDir.trim() || null,
+      incident_extracts_dir: incidentExtractsDir.trim() || null,
+      incident_downloads_dir: incidentDownloadsDir.trim() || null,
+      server_log_path: serverLogPath.trim() || null,
+      pr_package_enabled: prPackageEnabled,
+      git_host: gitHost.trim() || null,
+    };
+  }
+
+  async function saveProfile() {
+    if (!repoPath.trim()) {
+      setError("Repo path is required before saving.");
+      return;
+    }
+    const name = profileName.trim() || repoPath.trim();
+    setError("");
+    setSaving(true);
+    try {
+      const saved = await api("/api/hermes/setup-profiles", {
+        method: "POST",
+        body: { id: profileId, name, ...currentAnswers() },
+      });
+      setProfileId(saved.id);
+      setProfileName(saved.name);
+      loadProfiles();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function generate() {
+    if (!repoPath.trim()) {
+      setError("Repo path is required.");
+      return;
+    }
+    setError("");
+    setLoading(true);
+    setCopied(false);
+    try {
+      const result = await api("/api/skills/hermes-setup-wizard", {
+        method: "POST",
+        body: { profile: ANALYST_PROFILE, ...currentAnswers() },
+      });
+      setArtifact(result);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function copyYaml() {
+    const yaml = artifact?.result?.generated_yaml;
+    if (!yaml) return;
+    navigator.clipboard?.writeText(yaml).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  const result = artifact?.result;
+
+  return (
+    <section className={embedded ? "hermes-setup-embedded" : "screen prototype-screen"}>
+      {embedded ? (
+        <div className="tracker-panel-head">
+          <div>
+            <span className="source-pill">Hermes bridge</span>
+            <h2>Hermes setup wizard</h2>
+            <p>Q&amp;A walkthrough of this project's Hermes setup — channel IDs, allowed senders, storage paths — filled directly into the generated YAML. Only genuine secrets stay as placeholders.</p>
+          </div>
+        </div>
+      ) : (
+        <HeaderBlock
+          // eyebrow="Hermes bridge"
+          // title="Hermes setup wizard"
+          // subtitle="Q&A walkthrough of a Hermes deployment's real setup — channel IDs, allowed senders, storage paths — filled directly into the generated YAML. Only genuine secrets stay as placeholders."
+        />
+      )}
+      {onBack && (
+        <button className="btn ghost compact" type="button" onClick={onBack}>
+          ← Back to work queue
+        </button>
+      )}
+
+      <div className="tracker-panel" style={{ marginTop: "1rem" }}>
+        <div className="tracker-panel-head">
+          <div>
+            <span className="source-pill">Saved profiles</span>
+            <h2>Load a previous setup, or start a new one</h2>
+            <p>Saving is separate from generating — you can save your answers without generating, or generate without saving.</p>
+          </div>
+        </div>
+        <div className="action-row">
+          <select
+            value={profileId || ""}
+            onChange={(event) => {
+              setAutoMatched(false);
+              if (event.target.value) loadProfile(event.target.value);
+              else startNew();
+            }}
+          >
+            <option value="">{profileId ? "Start new..." : "Load saved profile..."}</option>
+            {savedProfiles.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          <input
+            type="text"
+            value={profileName}
+            onChange={(event) => setProfileName(event.target.value)}
+            placeholder="Profile name (e.g. PSP Backend)"
+          />
+          <button className="btn ghost compact" type="button" disabled={saving} onClick={saveProfile}>
+            {saving ? "Saving..." : profileId ? "Update profile" : "Save profile"}
+          </button>
+          {profileId && (
+            <button className="btn ghost compact" type="button" onClick={startNew}>
+              Start new
+            </button>
+          )}
+        </div>
+        {profileId && (
+          <p className="field-hint">
+            {autoMatched
+              ? `Auto-loaded "${profileName}" — it's already saved for this repo path, so you don't need to pick it again. Click "Start new" to begin a fresh, unsaved setup instead.`
+              : `Editing "${profileName}" — click "Start new" to begin a fresh, unsaved setup instead.`}
+          </p>
+        )}
+      </div>
+
+      <div className="tracker-panel" style={{ marginTop: "1rem" }}>
+        <div className="tracker-panel-head">
+          <div>
+            <span className="source-pill">{`Step ${step + 1} of ${HERMES_WIZARD_STEPS.length}`}</span>
+            <h2>{HERMES_WIZARD_STEPS[step]}</h2>
+          </div>
+        </div>
+
+        {step === 0 && (
+          <>
+            <label className="field-label">Repo path</label>
+            <input
+              type="text"
+              value={repoPath}
+              onChange={(event) => setRepoPath(event.target.value)}
+              placeholder="C:/path/to/target/repo"
+            />
+            <label className="field-label">Intake platforms</label>
+            <div className="action-row">
+              <label className="field-label" style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                <input type="checkbox" checked={platforms.includes("discord")} onChange={() => togglePlatform("discord")} />
+                Discord
+              </label>
+              <label className="field-label" style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                <input type="checkbox" checked={platforms.includes("email")} onChange={() => togglePlatform("email")} />
+                Email
+              </label>
+            </div>
+          </>
+        )}
+
+        {step === 1 && (
+          <>
+            {platforms.includes("discord") && (
+              <>
+                <label className="field-label">Discord intake channel ID</label>
+                <input
+                  type="text"
+                  value={discordChannelId}
+                  onChange={(event) => setDiscordChannelId(event.target.value)}
+                  placeholder="123456789012345678"
+                />
+                <p className="field-hint">Bot token isn't asked here — it's a secret, stays a placeholder in the generated YAML.</p>
+              </>
+            )}
+            {platforms.includes("email") && (
+              <>
+                <label className="field-label">IMAP host</label>
+                <input type="text" value={emailImapHost} onChange={(event) => setEmailImapHost(event.target.value)} placeholder="imap.example.com" />
+                <label className="field-label">Intake email account</label>
+                <input type="text" value={emailAccount} onChange={(event) => setEmailAccount(event.target.value)} placeholder="incidents@example.com" />
+                <label className="field-label">Allowed senders (one per line — who is allowed to trigger Hermes by email)</label>
+                <textarea
+                  className="compact-textarea code-snippet-textarea"
+                  value={emailAllowedSendersText}
+                  onChange={(event) => setEmailAllowedSendersText(event.target.value)}
+                  placeholder={"alice@example.com\nbob@example.com"}
+                />
+                <p className="field-hint">App password isn't asked here — it's a secret, stays a placeholder in the generated YAML.</p>
+              </>
+            )}
+            {platforms.length === 0 && <p className="muted-note">Go back and pick at least one platform.</p>}
+          </>
+        )}
+
+        {step === 2 && (
+          <>
+            <label className="field-label">Incident reports directory</label>
+            <input type="text" value={incidentReportsDir} onChange={(event) => setIncidentReportsDir(event.target.value)} placeholder="D:/Hermes/incident-reports" />
+            <label className="field-label">Incident extracts directory</label>
+            <input type="text" value={incidentExtractsDir} onChange={(event) => setIncidentExtractsDir(event.target.value)} placeholder="D:/Hermes/incident-extracts" />
+            <label className="field-label">Incident downloads directory (OneDrive / SharePoint path)</label>
+            <input type="text" value={incidentDownloadsDir} onChange={(event) => setIncidentDownloadsDir(event.target.value)} placeholder="D:/OneDrive/Hermes/incident-downloads" />
+            <label className="field-label">Server log source path</label>
+            <input type="text" value={serverLogPath} onChange={(event) => setServerLogPath(event.target.value)} placeholder="\\\\fileserver\\logs or an SFTP/network path" />
+            <p className="field-hint">Leave any of these blank to fall back to Hermes's own default location.</p>
+          </>
+        )}
+
+        {step === 3 && (
+          <>
+            <label className="field-label" style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <input type="checkbox" checked={prPackageEnabled} onChange={(event) => setPrPackageEnabled(event.target.checked)} />
+              Enable PR-package flow (fix plan → testing → push/PR)
+            </label>
+            {prPackageEnabled && (
+              <>
+                <label className="field-label">Git host</label>
+                <input type="text" value={gitHost} onChange={(event) => setGitHost(event.target.value)} placeholder="bitbucket.org/org/repo" />
+                <p className="field-hint">Credentials aren't asked here — they're a secret, stay a placeholder in the generated YAML.</p>
+              </>
+            )}
+          </>
+        )}
+
+        {error && <ErrorBox message={error} />}
+        <div className="action-row" style={{ marginTop: "0.75rem" }}>
+          <button className="btn ghost compact" type="button" disabled={step === 0} onClick={() => setStep((s) => Math.max(0, s - 1))}>
+            ← Back
+          </button>
+          {step < HERMES_WIZARD_STEPS.length - 1 ? (
+            <button className="btn primary compact" type="button" onClick={() => setStep((s) => Math.min(HERMES_WIZARD_STEPS.length - 1, s + 1))}>
+              Next →
+            </button>
+          ) : (
+            <button className="btn primary" type="button" disabled={loading} onClick={generate}>
+              {loading ? "Generating..." : "Generate setup scaffolding"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {result && (
+        <div className="tracker-panel" style={{ marginTop: "1rem" }}>
+          <div className="tracker-panel-head">
+            <div>
+              <span className="source-pill">Result</span>
+              <h2>Review and apply by hand</h2>
+              <p>This content is a draft artifact — nothing has been written to Hermes yet.</p>
+            </div>
+            <button className="btn ghost compact" type="button" onClick={copyYaml}>
+              {copied ? "Copied" : "Copy YAML"}
+            </button>
+          </div>
+          <pre className="code-snippet-textarea" style={{ whiteSpace: "pre-wrap" }}>
+            {result.generated_yaml}
+          </pre>
+          <h3>Checklist before applying</h3>
+          <ul>
+            {(result.checklist || []).map((item, index) => (
+              <li key={index}>{item}</li>
+            ))}
+          </ul>
+          {result.notes && result.notes.length > 0 && (
+            <>
+              <h3>Notes</h3>
+              <ul>
+                {result.notes.map((note, index) => (
+                  <li key={index} className="muted-note">
+                    {note}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function HermesVersionAdvisorPage({ workspace, onBack }) {
+  const [repoPath, setRepoPath] = useState(workspace?.local_path || "");
+  const [watchedPathsText, setWatchedPathsText] = useState("");
+  const [artifact, setArtifact] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const [pullStatus, setPullStatus] = useState(null);
+  const [checkingStatus, setCheckingStatus] = useState(false);
+  const [approving, setApproving] = useState(false);
+  const [pullResult, setPullResult] = useState(null);
+
+  async function generate() {
+    if (!repoPath.trim()) {
+      setError("Repo path is required.");
+      return;
+    }
+    setError("");
+    setLoading(true);
+    setPullResult(null);
+    try {
+      const watchedPaths = watchedPathsText
+        .split(/[\n,]/)
+        .map((path) => path.trim())
+        .filter(Boolean);
+      const result = await api("/api/skills/hermes-version-advisor", {
+        method: "POST",
+        body: {
+          profile: ANALYST_PROFILE,
+          repo_path: repoPath.trim(),
+          watched_paths: watchedPaths,
+        },
+      });
+      setArtifact(result);
+      checkPullStatus();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function checkPullStatus() {
+    setCheckingStatus(true);
+    try {
+      const status = await api(`/api/hermes/version-control/status?repo_path=${encodeURIComponent(repoPath.trim())}`);
+      setPullStatus(status);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCheckingStatus(false);
+    }
+  }
+
+  async function approveAndPull() {
+    if (!artifact?.task_id) return;
+    setError("");
+    setApproving(true);
+    try {
+      await api(`/api/artifacts/${artifact.task_id}/review`, { method: "PATCH" });
+      const result = await api("/api/hermes/version-control/pull", {
+        method: "POST",
+        body: { source_task_id: artifact.task_id, repo_path: repoPath.trim() },
+      });
+      setPullResult(result);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setApproving(false);
+    }
+  }
+
+  const result = artifact?.result;
+
+  return (
+    <section className="screen prototype-screen">
+      <HeaderBlock
+        eyebrow="Hermes bridge"
+        title="Hermes version control"
+        subtitle="Recommends which upstream commit/tag to adopt and which new feat: commits look like useful enhancements — then, only after you approve, actually runs the pull. Never pulls on its own."
+      />
+      {onBack && (
+        <button className="btn ghost compact" type="button" onClick={onBack}>
+          ← Back to work queue
+        </button>
+      )}
+
+      <div className="tracker-panel" style={{ marginTop: "1rem" }}>
+        <div className="tracker-panel-head">
+          <div>
+            <span className="source-pill">Step 1</span>
+            <h2>Point at your Hermes repo</h2>
+            <p>mini-Project checks upstream and figures out which files you've changed locally on its own — nothing else to configure.</p>
+          </div>
+        </div>
+
+        <label className="field-label">Repo path</label>
+        <input
+          type="text"
+          value={repoPath}
+          onChange={(event) => setRepoPath(event.target.value)}
+          placeholder="C:/path/to/target/repo"
+        />
+
+        <details className="collapsible-advanced">
+          <summary>Advanced: manually pick which files to watch (optional)</summary>
+          <p className="muted-note">
+            Leave this blank — mini-Project automatically detects which files you've changed locally
+            compared to upstream and treats those as "watched." Only fill this in if you want to watch
+            specific files you haven't touched yet.
+          </p>
+          <textarea
+            className="code-snippet-textarea"
+            value={watchedPathsText}
+            onChange={(event) => setWatchedPathsText(event.target.value)}
+            placeholder={"plugins/platforms/email/adapter.py\nplugins/platforms/email/incident_status_store.py"}
+          />
+        </details>
+
+        {error && <ErrorBox message={error} />}
+        <div className="action-row">
+          <button className="btn primary" type="button" disabled={loading} onClick={generate}>
+            {loading ? "Checking upstream..." : "Check upstream"}
+          </button>
+        </div>
+      </div>
+
+      {result && (
+        <div className="tracker-panel" style={{ marginTop: "1rem" }}>
+          <div className="tracker-panel-head">
+            <div>
+              <span className="source-pill">Step 2</span>
+              <h2>Recommendation</h2>
+            </div>
+          </div>
+          <div className="tracker-kpi-grid">
+            <Stat label="Commits behind" value={String(result.commits_behind)} />
+            <Stat label="Local-only commits" value={String(result.commits_ahead)} />
+            <Stat label="Latest tag" value={result.latest_tag || "—"} />
+            <Stat label="Touched watched files" value={String((result.touched_watched_files || []).length)} />
+          </div>
+
+          <div className="tracker-next-action-panel">
+            <div>
+              <span className="source-pill">Recommended</span>
+              <strong>{result.recommended_ref}</strong>
+            </div>
+            <p>{result.rationale}</p>
+          </div>
+
+          <h3>Files watched for this check</h3>
+          {result.watched_paths && result.watched_paths.length > 0 ? (
+            <>
+              <p className="muted-note">
+                Auto-detected from your local changes vs. upstream — commits touching these are flagged instead of auto-recommended.
+              </p>
+              <ul>
+                {result.watched_paths.map((path, index) => (
+                  <li key={index}><code>{path}</code></li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p className="muted-note">No local changes detected vs. upstream — nothing is being watched for this repo.</p>
+          )}
+
+          {result.risks_if_adopted && result.risks_if_adopted.length > 0 && (
+            <>
+              <h3>Risks / review before adopting</h3>
+              <ul>
+                {result.risks_if_adopted.map((risk, index) => (
+                  <li key={index}>{risk}</li>
+                ))}
+              </ul>
+            </>
+          )}
+
+          <h3>Suggested enhancements ({(result.feature_commits || []).length} feat: commits found upstream)</h3>
+          {result.suggested_enhancements && result.suggested_enhancements.length > 0 ? (
+            <ul>
+              {result.suggested_enhancements.map((item, index) => (
+                <li key={index}>{item}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted-note">No feat: commits found, or none judged relevant to this team's workflow.</p>
+          )}
+        </div>
+      )}
+
+      {artifact && (
+        <div className="tracker-panel" style={{ marginTop: "1rem" }}>
+          <div className="tracker-panel-head">
+            <div>
+              <span className="source-pill">Step 3</span>
+              <h2>Approve & pull</h2>
+              <p>Pulling is blocked until you approve this recommendation and the working tree is clean — commit or stash your own in-flight changes first.</p>
+            </div>
+            <button className="btn ghost compact" type="button" disabled={checkingStatus} onClick={checkPullStatus}>
+              {checkingStatus ? "Checking..." : "Re-check status"}
+            </button>
+          </div>
+          {pullStatus && (
+            <p className={pullStatus.clean ? "muted-note" : "field-hint"}>
+              {pullStatus.clean ? "✅ " : "⚠️ "}
+              {pullStatus.message}
+            </p>
+          )}
+          <div className="action-row">
+            <button
+              className="btn primary"
+              type="button"
+              disabled={approving || !pullStatus?.clean}
+              onClick={approveAndPull}
+            >
+              {approving ? "Pulling..." : "Approve & Pull"}
+            </button>
+          </div>
+          {pullResult && (
+            <>
+              <h3>{pullResult.success ? "Pull completed" : "Pull failed"}</h3>
+              <pre className="code-snippet-textarea" style={{ whiteSpace: "pre-wrap" }}>
+                {pullResult.output}
+              </pre>
+            </>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function HermesTrendingDigestPage({ onBack }) {
+  const [artifact, setArtifact] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    loadLatest();
+  }, []);
+
+  async function loadLatest() {
+    setLoading(true);
+    setError("");
+    try {
+      const summaries = await api("/api/artifacts");
+      const latest = summaries
+        .filter((item) => item.skill === "hermes-trending-digest")
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+      if (latest) {
+        const full = await api(`/api/artifacts/${latest.task_id}`);
+        setArtifact(full);
+      } else {
+        setArtifact(null);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function runNow() {
+    setError("");
+    setRunning(true);
+    try {
+      const result = await api("/api/skills/hermes-trending-digest", {
+        method: "POST",
+        body: { profile: ANALYST_PROFILE },
+      });
+      setArtifact(result);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  const candidates = artifact?.result?.candidates || [];
+
+  return (
+    <section className="screen prototype-screen">
+      <HeaderBlock
+        eyebrow="Hermes bridge"
+        title="GitHub Trending digest"
+        subtitle="Weekly scan of github.com/trending's top 3 repos, judged for relevance to a Hermes deployment — not daily, trending shifts too slowly for that to be useful."
+      />
+      {onBack && (
+        <button className="btn ghost compact" type="button" onClick={onBack}>
+          ← Back to work queue
+        </button>
+      )}
+
+      <div className="tracker-panel" style={{ marginTop: "1rem" }}>
+        <div className="tracker-panel-head">
+          <div>
+            <span className="source-pill">Last run</span>
+            <h2>{artifact ? formatDate(artifact.created_at) : "No digest has run yet"}</h2>
+            <p>Runs automatically every Monday. You can also trigger it now for a demo.</p>
+          </div>
+          <button className="btn primary compact" type="button" disabled={running} onClick={runNow}>
+            {running ? "Running..." : "Run now"}
+          </button>
+        </div>
+
+        {error && <ErrorBox message={error} />}
+        {loading && <p className="muted-note">Loading latest digest...</p>}
+
+        {!loading && candidates.length === 0 && (
+          <p className="muted-note">No candidates yet — run the digest to see this week's trending repos.</p>
+        )}
+
+        {candidates.length > 0 && (
+          <div className="trending-candidate-list">
+            {candidates.map((candidate) => (
+              <div className="trending-candidate" key={candidate.repo_name}>
+                <div className="trending-candidate-head">
+                  <strong>{candidate.repo_name}</strong>
+                  <span className="trending-candidate-stars">{candidate.stars} ★</span>
+                  <span className={`tag ${candidate.relevant ? "good" : ""}`}>
+                    {candidate.relevant ? "Relevant" : "Not judged / not relevant"}
+                  </span>
+                </div>
+                <p>{candidate.description}</p>
+                <p className="muted-note">{candidate.reasoning}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function MemoryCenterPrototype({ workspace, onBack }) {
   return (
     <section className="screen prototype-screen">
       <HeaderBlock
@@ -5363,6 +6234,7 @@ function MemoryCenterPrototype({ workspace }) {
         title="Similar past change memory"
         subtitle="Dummy memory page for reducing repeated analyst work by reusing previous impact areas, test scope, and clarification notes."
       />
+      <ScreenBackBar onBack={onBack} label="Back to work queue" />
       <div className="prototype-hero">
         <div>
           <span className="source-pill">RAG / Memory</span>
@@ -5682,6 +6554,14 @@ function RequirementAnalysisReport({ artifact, result, onArtifact, reviewed, rev
     (scope.in_scope || []).length > 0 ||
     (scope.out_of_scope || []).length > 0 ||
     (scope.dependencies || []).length > 0;
+  // Composed from real fields only (no fabricated confidence percentage --
+  // the backend only ever returns categorical low/medium/high) so this
+  // reads as the "why" behind the Ready/Needs-clarification call at a glance.
+  const reasonLine = [
+    `${missingInformation.length} missing item${missingInformation.length === 1 ? "" : "s"}`,
+    `${projectRisks.length} risk${projectRisks.length === 1 ? "" : "s"} identified`,
+    `confidence: ${String(result.confidence || "unknown").toUpperCase()}`,
+  ].join(" · ");
   return (
     <>
       <section className={`triage-decision-bar ${ready ? "ready" : "needs-clarification"}`}>
@@ -5689,6 +6569,7 @@ function RequirementAnalysisReport({ artifact, result, onArtifact, reviewed, rev
           <span className={`status-pill ${ready ? "reviewed" : "unreviewed"}`}>{ready ? "Ready" : "Needs clarification"}</span>
           <h2>{ready ? "Continue to impact analysis" : "Clarify before impact analysis"}</h2>
           <p>{ready ? "The request is usable. Confirm review to move forward." : "Answer the missing points first, then rerun triage."}</p>
+          <p className="triage-decision-reason">{reasonLine}</p>
         </div>
         <div className="triage-decision-metrics">
           <span>
@@ -5717,6 +6598,7 @@ function RequirementAnalysisReport({ artifact, result, onArtifact, reviewed, rev
         )}
       </section>
       {status === "NEEDS_CLARIFICATION" && <ClarificationPanel artifact={artifact} onArtifact={onArtifact} />}
+      <RelatedTicketsStrip items={result.similar_past_changes || []} />
       <section className="triage-summary-grid">
         <article className="triage-summary-card business">
           <span className="source-pill">Business value</span>
@@ -5832,6 +6714,32 @@ function TopRisksCompact({ items }) {
  * ticket's text — "Memory" retrieval, not a live evidence citation, so it
  * gets its own section rather than folding into EvidenceList.
  */
+// Same data SimilarPastChanges renders (real similarity score, summary,
+// reviewed_at) -- previously only shown buried inside the third collapsed
+// "Evidence & memory" panel. Surfacing the top match(es) near the decision
+// hero means the analyst sees "we've seen something like this before"
+// without having to know to expand that panel.
+function RelatedTicketsStrip({ items }) {
+  const top = (items || []).slice(0, 2);
+  if (top.length === 0) return null;
+  return (
+    <section className="related-tickets-strip">
+      <span className="source-pill">Related tickets</span>
+      <div className="related-tickets-list">
+        {top.map((item) => (
+          <article key={item.task_id} className="related-ticket-card">
+            <div className="related-ticket-top">
+              <span className="related-ticket-score">Match score {item.score}</span>
+              {item.reviewed_at && <span className="muted-note">{formatDate(item.reviewed_at)}</span>}
+            </div>
+            <p>{truncateText(item.summary, 160)}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function SimilarPastChanges({ items }) {
   if (!items.length) return null;
   return (
@@ -6144,6 +7052,7 @@ function ImpactReport({ artifact, result, handoffs, onArtifact, onReloadHandoffs
   return (
     <>
       <ImpactVisualSummary result={result} />
+      <ScopeCreepPanel findings={result.scope_creep_findings} />
       <EvidenceTraceabilityPanel
         title="Impact evidence traceability"
         subtitle="Connects each affected area or risk back to codebase, memory, or missing evidence."
@@ -6174,6 +7083,42 @@ function ImpactReport({ artifact, result, handoffs, onArtifact, onReloadHandoffs
         </details>
       </section>
     </>
+  );
+}
+
+// Only populated when the impact artifact came from "Import PR Scope" -- see
+// ScopeCreepDetector.java. Path matching there is best-effort (the codebase
+// graph's indexed root and GitHub's repo root aren't guaranteed to agree),
+// so this is framed as a check to verify, not a certainty.
+function ScopeCreepPanel({ findings }) {
+  const items = findings || [];
+  if (items.length === 0) return null;
+  const undeclared = items.filter((item) => item.kind === "undeclared_change");
+  const untouched = items.filter((item) => item.kind === "declared_untouched");
+  return (
+    <section className="scope-creep-panel">
+      <div className="scope-creep-head">
+        <span className="source-pill">Scope creep check</span>
+        <strong>PR diff vs. declared affected modules</strong>
+        <p>Best-effort file-path comparison against the PR's actual changes — verify before treating as ground truth.</p>
+      </div>
+      <div className="scope-creep-list">
+        {undeclared.map((item, index) => (
+          <article key={`undeclared-${index}`} className="scope-creep-item tone-warn">
+            <span className="scope-creep-kind">Undeclared change</span>
+            <code>{item.path}</code>
+            <p>{item.detail}</p>
+          </article>
+        ))}
+        {untouched.map((item, index) => (
+          <article key={`untouched-${index}`} className="scope-creep-item tone-info">
+            <span className="scope-creep-kind">Declared, untouched</span>
+            <code>{item.path}</code>
+            <p>{item.detail}</p>
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -6885,8 +7830,73 @@ function HeaderBlock({ eyebrow, title, subtitle }) {
   );
 }
 
+function ScreenBackBar({ onBack, label = "Back" }) {
+  if (!onBack) return null;
+  return (
+    <div className="screen-back-bar">
+      <button className="btn ghost compact" type="button" onClick={onBack}>
+        <span aria-hidden="true">←</span>
+        {label}
+      </button>
+    </div>
+  );
+}
+
+// Groups by the item's existing `type` tag into a handful of named buckets
+// (Business Rule / Ambiguity / Missing Information / Concern / Risk /
+// Evidence / Memory) so the panel can show collapsed counts instead of every
+// card flat -- same disclosure pattern already used lower on this page
+// (Clarification & rules / Scope+concerns+risks / Evidence & memory), just
+// applied one level higher where it matters most (this panel was ~70% of
+// page height with 10 cards shown at once).
+function groupTraceItems(items) {
+  const groups = new Map();
+  for (const item of items) {
+    const type = item.type || "";
+    let key = "other";
+    let label = "Other";
+    if (type === "Business rule") {
+      key = "business_rule";
+      label = "Business Rule";
+    } else if (type === "Ambiguity") {
+      key = "ambiguity";
+      label = "Ambiguity";
+    } else if (type === "Missing information") {
+      key = "missing_information";
+      label = "Missing Information";
+    } else if (type === "Source evidence") {
+      key = "evidence";
+      label = "Evidence";
+    } else if (type.startsWith("Past change")) {
+      key = "memory";
+      label = "Memory";
+    } else if (type.endsWith("concern")) {
+      key = "concern";
+      label = "Concern";
+    } else if (/^P\d/.test(type) || type === "Risk") {
+      key = "risk";
+      label = "Risk";
+    } else if (type === "Affected module") {
+      key = "affected_module";
+      label = "Affected Module";
+    } else if (type === "Risk note") {
+      key = "risk_note";
+      label = "Risk Note";
+    } else if (type === "Evidence gap") {
+      key = "evidence_gap";
+      label = "Evidence Gap";
+    }
+    if (!groups.has(key)) {
+      groups.set(key, { key, label, items: [] });
+    }
+    groups.get(key).items.push(item);
+  }
+  return Array.from(groups.values());
+}
+
 function EvidenceTraceabilityPanel({ title, subtitle, items }) {
   if (!items.length) return null;
+  const groups = groupTraceItems(items);
   return (
     <section className="evidence-trace-panel">
       <div className="evidence-trace-head">
@@ -6897,17 +7907,27 @@ function EvidenceTraceabilityPanel({ title, subtitle, items }) {
         </div>
         <strong>{items.length} linked item{items.length === 1 ? "" : "s"}</strong>
       </div>
-      <div className="evidence-trace-grid">
-        {items.map((item, index) => (
-          <article key={`${item.source}-${item.type}-${index}`} className={`evidence-trace-card ${item.tone || ""}`}>
-            <div className="evidence-trace-card-top">
-              <span className="source-pill">{item.source}</span>
-              <span className="concern-category">{item.type}</span>
+      <div className="evidence-trace-groups">
+        {groups.map((group) => (
+          <details key={group.key} className="evidence-trace-group">
+            <summary>
+              <span>{group.label}</span>
+              <small>{group.items.length}</small>
+            </summary>
+            <div className="evidence-trace-grid">
+              {group.items.map((item, index) => (
+                <article key={`${item.source}-${item.type}-${index}`} className={`evidence-trace-card ${item.tone || ""}`}>
+                  <div className="evidence-trace-card-top">
+                    <span className="source-pill">{item.source}</span>
+                    <span className="concern-category">{item.type}</span>
+                  </div>
+                  <strong>{item.finding}</strong>
+                  {item.evidence && <p>{item.evidence}</p>}
+                  {item.action && <small>{item.action}</small>}
+                </article>
+              ))}
             </div>
-            <strong>{item.finding}</strong>
-            {item.evidence && <p>{item.evidence}</p>}
-            {item.action && <small>{item.action}</small>}
-          </article>
+          </details>
         ))}
       </div>
     </section>
@@ -7293,6 +8313,11 @@ function formatDate(value) {
   } catch {
     return value;
   }
+}
+
+function truncateText(value, maxChars) {
+  const text = String(value || "").trim();
+  return text.length > maxChars ? `${text.slice(0, maxChars).trim()}...` : text;
 }
 
 function formatRelativeTime(value) {

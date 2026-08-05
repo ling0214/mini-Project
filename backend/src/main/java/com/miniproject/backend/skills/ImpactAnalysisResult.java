@@ -14,7 +14,8 @@ public record ImpactAnalysisResult(
         List<String> missingEvidence,
         String confidence,
         List<Evidence> evidence,
-        List<SimilarPastChange> similarPastChanges) {
+        List<SimilarPastChange> similarPastChanges,
+        List<ScopeCreepFinding> scopeCreepFindings) {
 
     public record AffectedModule(String name, String path, String reason, String evidence) {
     }
@@ -23,5 +24,14 @@ public record ImpactAnalysisResult(
     }
 
     public record Effort(String estimate, String basis) {
+    }
+
+    /**
+     * Only populated for PR-sourced impact analysis (see
+     * CoordinatorService.impactAnalysisFromPr / ScopeCreepDetector) -- free
+     * text change requests have no actual diff to compare declared modules
+     * against, so this stays empty for that path.
+     */
+    public record ScopeCreepFinding(String path, String kind, String detail) {
     }
 }

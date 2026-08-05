@@ -90,6 +90,6 @@ public class RuleBasedImpactAnalysisSynthesizer implements ImpactAnalysisSynthes
         }
 
         return new ImpactAnalysisResult(
-                affectedModules, riskNotes, riskLevel, effort, missingEvidence, confidence, evidence, List.of());
+                affectedModules, riskNotes, riskLevel, effort, missingEvidence, confidence, evidence, List.of(), List.of());
     }
 }

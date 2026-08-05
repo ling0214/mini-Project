@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -39,6 +40,13 @@ public class McpToolClient implements ProjectGraphClient, AutoCloseable {
 
         this.client = McpClient.sync(transport)
                 .clientInfo(new McpSchema.Implementation("mini-project-backend", "0.1.0"))
+                // SDK default request timeout (~20s) is fine for lookups but far too
+                // short for index_project on a large repo (e.g. an 80k+ node external
+                // codebase takes several minutes) — surfaced as a generic
+                // McpToolException wrapping a timeout, easy to mistake for a real
+                // indexing failure. All tool calls share one client, so this applies
+                // to every call, not just indexing.
+                .requestTimeout(Duration.ofMinutes(15))
                 .build();
         this.client.initialize();
     }

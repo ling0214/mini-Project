@@ -77,7 +77,7 @@ Hermes status bridge (bidirectional) -> Ticket Tracker / Kanban Board
 
 ### Tracking & monitoring (real data, no placeholders)
 - Ticket Tracker: groups an analyst's own artifact chain into a 6-phase view (Requirement Review, Impact Analysis, Development/Fixing, Testing, Review/Handoff, Jira/UI Sync), scoped to the active project.
-- Hermes Tracker: shows Hermes-originated incidents' real reported status end to end, independent of mini-Project's own artifact chain (a ticket routed straight to Hermes for RCA never gets its own impact-analysis artifact, and the tracker reflects that instead of showing it as stuck).
+- Hermes Incident Tracker: shows Hermes-originated incidents' real reported status end to end, independent of mini-Project's own artifact chain (a ticket routed straight to Hermes for RCA never gets its own impact-analysis artifact, and the tracker reflects that instead of showing it as stuck).
 - Kanban board: merges both of the above into one board — a mini-Project ticket only appears once its Requirement Review phase is reviewed, a Hermes incident only appears once Hermes has accepted it — with only genuinely real fields (id, title, source, current stage, last-updated time; no fabricated priority/owner/progress numbers).
 
 ### Frontend

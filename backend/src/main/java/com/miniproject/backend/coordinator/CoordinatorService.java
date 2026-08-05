@@ -6,12 +6,20 @@ import com.miniproject.backend.agent.AgentRegistry;
 import com.miniproject.backend.artifact.Artifact;
 import com.miniproject.backend.artifact.Evidence;
 import com.miniproject.backend.github.GitHubPrReader;
+import com.miniproject.backend.github.ScopeCreepDetector;
 import com.miniproject.backend.memory.MemoryCardService;
 import com.miniproject.backend.memory.SimilarPastChange;
 import com.miniproject.backend.persistence.ArtifactPersistenceService;
 import com.miniproject.backend.skills.CodeQaResult;
 import com.miniproject.backend.skills.CodeQaSkill;
 import com.miniproject.backend.skills.HandoffSummaryResult;
+import com.miniproject.backend.skills.HermesSetupWizardAnswers;
+import com.miniproject.backend.skills.HermesSetupWizardResult;
+import com.miniproject.backend.skills.HermesSetupWizardSkill;
+import com.miniproject.backend.skills.HermesTrendingDigestResult;
+import com.miniproject.backend.skills.HermesTrendingDigestSkill;
+import com.miniproject.backend.skills.HermesVersionAdvisorResult;
+import com.miniproject.backend.skills.HermesVersionAdvisorSkill;
 import com.miniproject.backend.skills.ImpactAnalysisResult;
 import com.miniproject.backend.skills.ImpactAnalysisSkill;
 import com.miniproject.backend.skills.RequirementAnalysisResult;
@@ -47,9 +55,13 @@ public class CoordinatorService {
     private final CodeQaSkill codeQaSkill;
     private final ImpactAnalysisSkill impactAnalysisSkill;
     private final GitHubPrReader prReader;
+    private final ScopeCreepDetector scopeCreepDetector;
     private final TestCaseGenSkill testCaseGenSkill;
     private final TimelineEstimationSynthesizer timelineEstimationSynthesizer;
     private final RequirementAnalysisSkill requirementAnalysisSkill;
+    private final HermesSetupWizardSkill hermesSetupWizardSkill;
+    private final HermesVersionAdvisorSkill hermesVersionAdvisorSkill;
+    private final HermesTrendingDigestSkill hermesTrendingDigestSkill;
     private final ArtifactPersistenceService persistence;
     private final AgentRegistry agentRegistry;
     private final ObjectMapper objectMapper;
@@ -59,9 +71,13 @@ public class CoordinatorService {
             CodeQaSkill codeQaSkill,
             ImpactAnalysisSkill impactAnalysisSkill,
             GitHubPrReader prReader,
+            ScopeCreepDetector scopeCreepDetector,
             TestCaseGenSkill testCaseGenSkill,
             TimelineEstimationSynthesizer timelineEstimationSynthesizer,
             RequirementAnalysisSkill requirementAnalysisSkill,
+            HermesSetupWizardSkill hermesSetupWizardSkill,
+            HermesVersionAdvisorSkill hermesVersionAdvisorSkill,
+            HermesTrendingDigestSkill hermesTrendingDigestSkill,
             ArtifactPersistenceService persistence,
             AgentRegistry agentRegistry,
             ObjectMapper objectMapper,
@@ -69,9 +85,13 @@ public class CoordinatorService {
         this.codeQaSkill = codeQaSkill;
         this.impactAnalysisSkill = impactAnalysisSkill;
         this.prReader = prReader;
+        this.scopeCreepDetector = scopeCreepDetector;
         this.testCaseGenSkill = testCaseGenSkill;
         this.timelineEstimationSynthesizer = timelineEstimationSynthesizer;
         this.requirementAnalysisSkill = requirementAnalysisSkill;
+        this.hermesSetupWizardSkill = hermesSetupWizardSkill;
+        this.hermesVersionAdvisorSkill = hermesVersionAdvisorSkill;
+        this.hermesTrendingDigestSkill = hermesTrendingDigestSkill;
         this.persistence = persistence;
         this.agentRegistry = agentRegistry;
         this.objectMapper = objectMapper;
@@ -90,7 +110,7 @@ public class CoordinatorService {
         List<SimilarPastChange> similar = memoryCardService.findSimilar("impact-analysis", queryText, null);
         return new ImpactAnalysisResult(
                 result.affectedModules(), result.riskNotes(), result.riskLevel(), result.roughEffort(),
-                result.missingEvidence(), result.confidence(), result.evidence(), similar);
+                result.missingEvidence(), result.confidence(), result.evidence(), similar, result.scopeCreepFindings());
     }
 
     public Artifact<CodeQaResult> codeQa(String profile, String question) {
@@ -114,6 +134,10 @@ public class CoordinatorService {
      * changed-file patches, GET-only, no write-back — see GitHubPrReader)
      * and feeds it through the same ImpactAnalysisSkill/report as free-text
      * change requests, adding one extra evidence entry for the PR itself.
+     * Also compares the PR's actually-changed files against the declared
+     * affected modules (see ScopeCreepDetector) -- only possible here,
+     * since this is the one impact-analysis path with a real diff to check
+     * declared scope against.
      */
     public Artifact<ImpactAnalysisResult> impactAnalysisFromPr(String profile, String prUrl) {
         requireSkillAllowed(profile, "impact-analysis");
@@ -124,9 +148,11 @@ public class CoordinatorService {
         List<Evidence> evidence = new ArrayList<>(result.evidence());
         evidence.add(new Evidence("Source PR: " + pr.title(), prUrl));
         List<SimilarPastChange> similar = memoryCardService.findSimilar("impact-analysis", changeRequestText, null);
+        List<ImpactAnalysisResult.ScopeCreepFinding> scopeCreepFindings =
+                scopeCreepDetector.detect(pr.files(), result.affectedModules());
         ImpactAnalysisResult withPrEvidence = new ImpactAnalysisResult(
                 result.affectedModules(), result.riskNotes(), result.riskLevel(), result.roughEffort(),
-                result.missingEvidence(), result.confidence(), evidence, similar);
+                result.missingEvidence(), result.confidence(), evidence, similar, scopeCreepFindings);
 
         Artifact<ImpactAnalysisResult> artifact =
                 Artifact.draft(profile + "-agent", "impact-analysis", withPrEvidence, withPrEvidence.evidence());
@@ -140,6 +166,40 @@ public class CoordinatorService {
         Artifact<RequirementAnalysisResult> artifact =
                 Artifact.draft(profile + "-agent", "requirement-analysis", result, result.evidence());
         persistence.save(artifact, profile, description);
+        return artifact;
+    }
+
+    public Artifact<HermesSetupWizardResult> hermesSetupWizard(String profile, HermesSetupWizardAnswers answers) {
+        requireSkillAllowed(profile, "hermes-setup-wizard");
+        HermesSetupWizardResult result = hermesSetupWizardSkill.run(answers);
+        Artifact<HermesSetupWizardResult> artifact =
+                Artifact.draft(profile + "-agent", "hermes-setup-wizard", result, result.evidence());
+        persistence.save(artifact, profile, answers.repoPath());
+        return artifact;
+    }
+
+    public Artifact<HermesVersionAdvisorResult> hermesVersionAdvisor(
+            String profile, String repoPath, String remoteRef, String localRef, List<String> watchedPaths) {
+        requireSkillAllowed(profile, "hermes-version-advisor");
+        HermesVersionAdvisorResult result =
+                hermesVersionAdvisorSkill.run(repoPath, remoteRef, localRef, watchedPaths);
+        Artifact<HermesVersionAdvisorResult> artifact =
+                Artifact.draft(profile + "-agent", "hermes-version-advisor", result, result.evidence());
+        persistence.save(artifact, profile, repoPath);
+        return artifact;
+    }
+
+    /**
+     * Also called by the weekly @Scheduled job (HermesTrendingDigestJob) under
+     * the "software-analyst" profile — same code path as a manual trigger, so
+     * there's exactly one place this runs, not a scheduled-vs-manual fork.
+     */
+    public Artifact<HermesTrendingDigestResult> hermesTrendingDigest(String profile) {
+        requireSkillAllowed(profile, "hermes-trending-digest");
+        HermesTrendingDigestResult result = hermesTrendingDigestSkill.run();
+        Artifact<HermesTrendingDigestResult> artifact =
+                Artifact.draft(profile + "-agent", "hermes-trending-digest", result, result.evidence());
+        persistence.save(artifact, profile, "github.com/trending weekly scan");
         return artifact;
     }
 
