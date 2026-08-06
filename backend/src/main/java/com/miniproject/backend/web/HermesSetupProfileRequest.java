@@ -16,5 +16,6 @@ public record HermesSetupProfileRequest(
         String incidentDownloadsDir,
         String serverLogPath,
         Boolean prPackageEnabled,
-        String gitHost) {
+        String gitHost,
+        String hermesHome) {
 }

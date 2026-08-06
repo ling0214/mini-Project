@@ -5187,6 +5187,10 @@ button {
   align-items: stretch;
 }
 
+.hermes-hero-panel:has(> div:only-child) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .hermes-hero-panel > div:first-child,
 .hermes-project-card {
   min-width: 0;
@@ -5232,6 +5236,28 @@ button {
   font-size: 0.74rem;
   font-weight: 850;
   text-transform: uppercase;
+}
+
+.hermes-secondary-section-head {
+  display: grid;
+  gap: 0.35rem;
+  margin: 1.75rem 0 0.9rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+}
+
+.hermes-secondary-section-head h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1.15rem;
+}
+
+.hermes-secondary-section-head p {
+  margin: 0;
+  max-width: 780px;
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+  line-height: 1.5;
 }
 
 .hermes-project-card strong {
@@ -8063,6 +8089,40 @@ textarea {
   font-size: 0.78rem;
   font-weight: 400;
   line-height: 1.45;
+}
+
+.hermes-gate-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-radius: 14px;
+  padding: 1rem 1.2rem;
+  margin-bottom: 1.1rem;
+  background: rgba(184, 134, 11, 0.1);
+  border: 1px solid rgba(184, 134, 11, 0.3);
+}
+
+.hermes-gate-banner.ready {
+  background: rgba(26, 166, 183, 0.1);
+  border-color: rgba(26, 166, 183, 0.24);
+}
+
+.hermes-gate-banner h3 {
+  margin: 0.25rem 0 0.3rem;
+  font-size: 1rem;
+}
+
+.hermes-gate-banner p {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: 0.85rem;
+  max-width: 46ch;
+}
+
+.hermes-gate-banner .action-row {
+  flex-shrink: 0;
 }
 
 .hermes-match-hint {

@@ -48,6 +48,54 @@ public class HermesIncidentReader {
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * Best-effort auto-detect so the analyst never has to type or remember
+     * this path -- Hermes itself always installs under %LOCALAPPDATA%/hermes
+     * on Windows (confirmed against a real install: incidents/ and
+     * agent-tasks/ both live directly under it), so this checks that
+     * convention rather than guessing a hardcoded path. Returns null if
+     * nothing matches -- the analyst can still type it manually.
+     */
+    public String detectHermesHome() {
+        String localAppData = System.getenv("LOCALAPPDATA");
+        if (localAppData == null || localAppData.isBlank()) {
+            return null;
+        }
+        Path candidate = Path.of(localAppData, "hermes");
+        boolean looksReal = Files.isDirectory(candidate.resolve("incidents"))
+                || Files.isDirectory(candidate.resolve("agent-tasks"));
+        return looksReal ? candidate.toString() : null;
+    }
+
+    /**
+     * Creates an empty incidents/ + agent-tasks/{running,pending,completed,failed}
+     * skeleton at the given path -- for onboarding a NEW project onto its own
+     * separate Hermes install/profile (this repo's Hermes only ever serves
+     * one project at a time; a second project needs its own instance pointed
+     * at its own folder, same shape Hermes itself already expects). This
+     * only ever creates empty directories -- it never touches Hermes's own
+     * incident-creation code, so it can't affect any live incident.
+     */
+    public Map<String, Object> provisionHermesHome(String path) {
+        if (path == null || path.isBlank()) {
+            throw new IllegalArgumentException("path is required");
+        }
+        Path home = Path.of(path.trim());
+        boolean alreadyExisted = Files.isDirectory(home.resolve("incidents")) || Files.isDirectory(home.resolve("agent-tasks"));
+        try {
+            Files.createDirectories(home.resolve("incidents"));
+            for (String folder : new String[] {"running", "pending", "completed", "failed"}) {
+                Files.createDirectories(home.resolve("agent-tasks").resolve(folder));
+            }
+        } catch (IOException e) {
+            throw new HermesIncidentException("Could not create folders at " + home + ": " + e.getMessage());
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("hermes_home", home.toString());
+        result.put("already_existed", alreadyExisted);
+        return result;
+    }
+
     public List<Map<String, Object>> listIncidents(String hermesHome, int limit) {
         Path dir = incidentDir(hermesHome);
         if (!Files.isDirectory(dir)) {

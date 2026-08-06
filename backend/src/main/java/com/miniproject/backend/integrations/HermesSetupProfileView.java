@@ -17,6 +17,7 @@ public record HermesSetupProfileView(
         String serverLogPath,
         boolean prPackageEnabled,
         String gitHost,
+        String hermesHome,
         String createdAt,
         String updatedAt) {
 }

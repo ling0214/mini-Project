@@ -16,9 +16,11 @@ import java.util.Optional;
 public class HermesSetupProfileService {
 
     private final HermesSetupProfileRepository repository;
+    private final HermesIncidentReader incidentReader;
 
-    public HermesSetupProfileService(HermesSetupProfileRepository repository) {
+    public HermesSetupProfileService(HermesSetupProfileRepository repository, HermesIncidentReader incidentReader) {
         this.repository = repository;
+        this.incidentReader = incidentReader;
     }
 
     @Transactional
@@ -44,7 +46,21 @@ public class HermesSetupProfileService {
                 request.incidentDownloadsDir(),
                 request.serverLogPath(),
                 request.prPackageEnabled() != null && request.prPackageEnabled(),
-                request.gitHost());
+                request.gitHost(),
+                request.hermesHome());
+
+        // A hermes_home for a brand-new project won't have an incidents/
+        // agent-tasks skeleton yet -- create it as part of saving instead of
+        // making the analyst do it as a separate step first. Best-effort:
+        // a bad path here shouldn't block saving the rest of the profile.
+        if (request.hermesHome() != null && !request.hermesHome().isBlank()) {
+            try {
+                incidentReader.provisionHermesHome(request.hermesHome());
+            } catch (RuntimeException ignored) {
+                // best-effort -- analyst can still create it manually via the wizard's notice
+            }
+        }
+
         return repository.save(entity).toView();
     }
 
@@ -56,6 +72,14 @@ public class HermesSetupProfileService {
     @Transactional(readOnly = true)
     public Optional<HermesSetupProfileView> get(String id) {
         return repository.findById(id).map(HermesSetupProfileEntity::toView);
+    }
+
+    @Transactional
+    public void delete(String id) {
+        if (!repository.existsById(id)) {
+            throw new IllegalArgumentException("No setup profile found for id " + id);
+        }
+        repository.deleteById(id);
     }
 
     public record HermesSetupProfileSaveRequest(
@@ -70,6 +94,7 @@ public class HermesSetupProfileService {
             String incidentDownloadsDir,
             String serverLogPath,
             Boolean prPackageEnabled,
-            String gitHost) {
+            String gitHost,
+            String hermesHome) {
     }
 }
