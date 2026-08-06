@@ -31,6 +31,23 @@ class HermesIncidentReaderTest {
     Path hermesHome;
 
     @Test
+    void provisionHermesHomeCreatesTheExpectedSkeleton() {
+        Path newProjectHome = hermesHome.resolve("brand-new-project");
+
+        Map<String, Object> result = reader.provisionHermesHome(newProjectHome.toString());
+
+        assertThat(result.get("already_existed")).isEqualTo(false);
+        assertThat(Files.isDirectory(newProjectHome.resolve("incidents"))).isTrue();
+        for (String folder : List.of("running", "pending", "completed", "failed")) {
+            assertThat(Files.isDirectory(newProjectHome.resolve("agent-tasks").resolve(folder))).isTrue();
+        }
+
+        // Provisioning again is a safe no-op, not an error, and correctly reports it already existed.
+        Map<String, Object> second = reader.provisionHermesHome(newProjectHome.toString());
+        assertThat(second.get("already_existed")).isEqualTo(true);
+    }
+
+    @Test
     void listIncidentsReturnsEmptyWhenIncidentsDirIsMissing() {
         List<Map<String, Object>> incidents = reader.listIncidents(hermesHome.toString(), 50);
 

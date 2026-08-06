@@ -66,6 +66,18 @@ public class HermesSetupProfileEntity {
     @Column(name = "git_host")
     private String gitHost;
 
+    /**
+     * The folder that directly contains Hermes's own "incidents" and
+     * "agent-tasks" for whichever Hermes install serves this project --
+     * separate from the generated setup YAML (Hermes doesn't need to be told
+     * its own home directory), this is purely so mini-Project's Production
+     * Incidents panel can follow the active project instead of one global
+     * path. See HermesIncidentReader.detectHermesHome for the auto-detect
+     * this can be seeded from.
+     */
+    @Column(name = "hermes_home")
+    private String hermesHome;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -88,7 +100,7 @@ public class HermesSetupProfileEntity {
             String repoPath, List<String> platforms, String discordChannelId,
             String emailImapHost, String emailAccount, List<String> emailAllowedSenders,
             String incidentReportsDir, String incidentExtractsDir, String incidentDownloadsDir,
-            String serverLogPath, boolean prPackageEnabled, String gitHost) {
+            String serverLogPath, boolean prPackageEnabled, String gitHost, String hermesHome) {
         this.repoPath = repoPath;
         this.platforms = join(platforms);
         this.discordChannelId = discordChannelId;
@@ -101,6 +113,7 @@ public class HermesSetupProfileEntity {
         this.serverLogPath = serverLogPath;
         this.prPackageEnabled = prPackageEnabled;
         this.gitHost = gitHost;
+        this.hermesHome = hermesHome;
         this.updatedAt = Instant.now();
     }
 
@@ -126,6 +139,6 @@ public class HermesSetupProfileEntity {
         return new HermesSetupProfileView(
                 id, name, repoPath, split(platforms), discordChannelId, emailImapHost, emailAccount,
                 split(emailAllowedSenders), incidentReportsDir, incidentExtractsDir, incidentDownloadsDir,
-                serverLogPath, prPackageEnabled, gitHost, createdAt.toString(), updatedAt.toString());
+                serverLogPath, prPackageEnabled, gitHost, hermesHome, createdAt.toString(), updatedAt.toString());
     }
 }

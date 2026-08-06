@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -31,6 +32,24 @@ public class HermesIncidentController {
 
     public HermesIncidentController(HermesIncidentReader reader) {
         this.reader = reader;
+    }
+
+    /** So the analyst never has to type/remember the Hermes home path -- see HermesIncidentReader.detectHermesHome. */
+    @CrossOrigin(origins = "*")
+    @GetMapping("/detect-home")
+    public Map<String, Object> detectHome() {
+        String detected = reader.detectHermesHome();
+        return detected == null ? Map.of() : Map.of("hermes_home", detected);
+    }
+
+    /** Onboarding a new project: create the empty incidents/ + agent-tasks/* skeleton a fresh Hermes instance for that project would expect. */
+    @CrossOrigin(origins = "*")
+    @PostMapping("/provision-home")
+    public Map<String, Object> provisionHome(@RequestBody ProvisionHomeRequest request) {
+        return reader.provisionHermesHome(request.path());
+    }
+
+    public record ProvisionHomeRequest(String path) {
     }
 
     @CrossOrigin(origins = "*")

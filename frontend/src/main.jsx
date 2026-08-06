@@ -417,6 +417,14 @@ function ConnectProjectScreen({ onConnected, onCancel, onActiveRemoved }) {
   const [browserOpen, setBrowserOpen] = useState(false);
   const [hermesMatchCount, setHermesMatchCount] = useState(null);
 
+  // Gate: after connecting/switching to a project, stay on this screen
+  // instead of jumping straight to the workbench until Hermes is set up for
+  // it (or the analyst explicitly skips) -- otherwise the embedded wizard
+  // below is easy to miss entirely. Off by default; only armed by a real
+  // declare()/activate() action, never by just browsing this screen.
+  const [justConnected, setJustConnected] = useState(false);
+  const [hermesAcknowledged, setHermesAcknowledged] = useState(false);
+
   const [subpathsByProject, setSubpathsByProject] = useState({});
   const [expandedSubpathsProjectId, setExpandedSubpathsProjectId] = useState(null);
   const [newSubpathLabel, setNewSubpathLabel] = useState("");
@@ -515,11 +523,13 @@ function ConnectProjectScreen({ onConnected, onCancel, onActiveRemoved }) {
     }
     setLoading(true);
     try {
-      const saved = await api("/api/workspace", {
+      await api("/api/workspace", {
         method: "POST",
         body: { name, repo_url: repoUrl, local_path: localPath },
       });
-      onConnected(saved);
+      loadProjects();
+      setHermesAcknowledged(false);
+      setJustConnected(true);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -531,8 +541,10 @@ function ConnectProjectScreen({ onConnected, onCancel, onActiveRemoved }) {
     setError("");
     setLoading(true);
     try {
-      const saved = await api(`/api/workspace/${id}/activate`, { method: "POST" });
-      onConnected(saved);
+      await api(`/api/workspace/${id}/activate`, { method: "POST" });
+      loadProjects();
+      setHermesAcknowledged(false);
+      setJustConnected(true);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -562,6 +574,12 @@ function ConnectProjectScreen({ onConnected, onCancel, onActiveRemoved }) {
   const activeProject = projects.find((project) => project.active);
   const readyCount = projects.filter((project) => project.index_status === "ready" && project.graphify_index_status === "ready").length;
   const indexingCount = projects.filter((project) => project.index_status === "indexing" || project.graphify_index_status === "indexing").length;
+  const awaitingHermesGate = justConnected && Boolean(activeProject);
+
+  function proceedToWorkbench() {
+    setJustConnected(false);
+    onConnected(activeProject);
+  }
 
   return (
     <main className="connect-project-shell command-center-shell">
@@ -637,7 +655,7 @@ function ConnectProjectScreen({ onConnected, onCancel, onActiveRemoved }) {
                 {loading ? "Connecting..." : "Connect project"}
               </button>
               {onCancel && (
-                <button className="btn ghost" type="button" onClick={onCancel}>
+                <button className="btn ghost" type="button" onClick={awaitingHermesGate ? proceedToWorkbench : onCancel}>
                   Cancel
                 </button>
               )}
@@ -785,7 +803,37 @@ function ConnectProjectScreen({ onConnected, onCancel, onActiveRemoved }) {
               <p>Set this up now, before heading into the workbench — repo intake channels, storage paths, and PR-package flow, all in one place.</p>
             </div>
           </div>
-          <HermesSetupWizardPage workspace={activeProject} embedded />
+          {awaitingHermesGate && (
+            <div className={`hermes-gate-banner ${hermesAcknowledged ? "ready" : ""}`}>
+              <div>
+                <span className="source-pill">Before you continue</span>
+                <h3>
+                  {hermesAcknowledged
+                    ? `Hermes is set up for "${activeProject.name}".`
+                    : `Set up Hermes for "${activeProject.name}", or skip for now`}
+                </h3>
+                <p>
+                  {hermesAcknowledged
+                    ? "You can still come back and adjust it any time from this screen."
+                    : "Fill in the intake channel and storage paths below so incidents for this project show up automatically. Not ready yet? Skip and set it up later from here."}
+                </p>
+                {!hermesAcknowledged && (
+                  <p className="field-hint">"Continue" unlocks once Hermes is set up below — or use "Skip" to come back to it later.</p>
+                )}
+              </div>
+              <div className="action-row">
+                {!hermesAcknowledged && (
+                  <button className="btn ghost compact" type="button" onClick={proceedToWorkbench}>
+                    Skip Hermes setup for now →
+                  </button>
+                )}
+                <button className="btn primary compact" type="button" disabled={!hermesAcknowledged} onClick={proceedToWorkbench}>
+                  Continue to workbench →
+                </button>
+              </div>
+            </div>
+          )}
+          <HermesSetupWizardPage workspace={activeProject} embedded onSetupReady={() => setHermesAcknowledged(true)} />
         </section>
 
       </section>
@@ -5450,25 +5498,30 @@ function HermesTrackerPrototype({ workspace, onBack }) {
     <section className="screen hermes-dashboard-page">
       <HeaderBlock
         eyebrow="Hermes bridge"
-        title="Hermes handoff tracker"
-        subtitle="Monitor reviewed analyst packages after they are handed off to Hermes, from intake acceptance to developer update, testing decision, and final summary."
+        title="Hermes control panel"
+        subtitle="The single place to monitor and operate Hermes — its own live production-incident pipeline below, and the packages mini-Project itself handed off further down. No need to also have Hermes's own dashboard open."
       />
       <ScreenBackBar onBack={onBack} label="Back to work queue" />
+
+      <div className="tracker-panel" style={{ marginTop: "1rem" }}>
+        <ProductionIncidentsPanel workspace={workspace} />
+      </div>
+
+      <div className="hermes-secondary-section-head">
+        <span className="source-pill">External execution bridge</span>
+        <h2>Packages you sent to Hermes</h2>
+        <p>
+          Separate from the production pipeline above — mini-Project keeps the analyst-owned evidence and review gate,
+          Hermes receives the approved package and reports progress back through <code>POST /api/hermes/status</code>.
+        </p>
+      </div>
 
       <div className="hermes-command-center">
         <section className="hermes-hero-panel">
           <div>
-            <span className="source-pill">External execution bridge</span>
-            <h2>Reviewed handoffs, tracked after send</h2>
-            <p>
-              mini-Project keeps the analyst-owned evidence and review gate. Hermes receives the approved package and reports
-              progress back through <code>POST /api/hermes/status</code>.
-            </p>
-          </div>
-          <div className="hermes-project-card">
-            <span>Current project</span>
-            <strong>{workspace?.name || "No project connected"}</strong>
-            <small>{workspace?.local_path || "Connect a project to ground handoffs in repo context."}</small>
+            <span className="source-pill">Current project</span>
+            <h2>{workspace?.name || "No project connected"}</h2>
+            <p>{workspace?.local_path || "Connect a project to ground handoffs in repo context."}</p>
           </div>
         </section>
 
@@ -5640,10 +5693,6 @@ function HermesTrackerPrototype({ workspace, onBack }) {
             </section>
           );
         })}
-      </div>
-
-      <div className="tracker-panel" style={{ marginTop: "1.5rem" }}>
-        <ProductionIncidentsPanel />
       </div>
     </section>
   );
@@ -5958,14 +6007,9 @@ function ProductionIncidentDetail({ incident, onStop, onContinue, onRetry, stopp
   );
 }
 
-function ProductionIncidentsPanel() {
-  const [hermesHome, setHermesHome] = useState(() => {
-    try {
-      return window.localStorage.getItem(HERMES_HOME_STORAGE_KEY) || "";
-    } catch {
-      return "";
-    }
-  });
+function ProductionIncidentsPanel({ workspace }) {
+  const [hermesHome, setHermesHome] = useState("");
+  const [hermesHomeSource, setHermesHomeSource] = useState("");
   const [incidents, setIncidents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -5974,10 +6018,69 @@ function ProductionIncidentsPanel() {
   const [stoppingKey, setStoppingKey] = useState("");
   const [continuingKey, setContinuingKey] = useState("");
   const [retryingKey, setRetryingKey] = useState("");
+  const [detectingHome, setDetectingHome] = useState(false);
 
   function updateFilter(key, value) {
     setFilters((prev) => ({ ...prev, [key]: value }));
   }
+
+  // Follows the active project: prefer the Hermes home saved with that
+  // project's Setup Wizard profile (so switching projects in mini-Project
+  // switches which Hermes install's incidents show), else whatever's
+  // remembered globally on this device, else Hermes's own install
+  // convention as a last resort. Re-resolves whenever the active project
+  // changes, not just on first mount.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function resolve() {
+      if (workspace?.local_path) {
+        try {
+          const profiles = await api("/api/hermes/setup-profiles");
+          const match = findProfileForRepoPath(profiles, workspace.local_path);
+          if (cancelled) return;
+          if (match?.hermes_home) {
+            setHermesHome(match.hermes_home);
+            setHermesHomeSource("profile");
+            return;
+          }
+        } catch {
+          // fall through to the other sources
+        }
+      }
+      if (cancelled) return;
+
+      let stored = "";
+      try {
+        stored = window.localStorage.getItem(HERMES_HOME_STORAGE_KEY) || "";
+      } catch {
+        // ignore -- private browsing / storage disabled
+      }
+      if (stored) {
+        setHermesHome(stored);
+        setHermesHomeSource("manual");
+        return;
+      }
+
+      setDetectingHome(true);
+      try {
+        const res = await api("/api/hermes/incidents/detect-home");
+        if (!cancelled && res?.hermes_home) {
+          setHermesHome(res.hermes_home);
+          setHermesHomeSource("detected");
+        }
+      } catch {
+        // best-effort -- the analyst can still type it manually
+      } finally {
+        if (!cancelled) setDetectingHome(false);
+      }
+    }
+
+    resolve();
+    return () => {
+      cancelled = true;
+    };
+  }, [workspace?.local_path]);
 
   function load() {
     const home = hermesHome.trim();
@@ -6063,17 +6166,27 @@ function ProductionIncidentsPanel() {
       <input
         type="text"
         value={hermesHome}
-        onChange={(event) => setHermesHome(event.target.value)}
-        placeholder="C:/Users/you/AppData/Local/hermes"
+        onChange={(event) => {
+          setHermesHomeSource("manual");
+          setHermesHome(event.target.value);
+        }}
+        placeholder={detectingHome ? "Detecting..." : "C:/Users/you/AppData/Local/hermes"}
       />
       <p className="field-hint">
-        The folder that directly contains "incidents" and "agent-tasks" — not the hermes-agent repo checkout, its
-        sibling data folder. Remembered on this device.
+        {hermesHomeSource === "profile"
+          ? `Following "${workspace?.name || "the active project"}" — saved in its Hermes Setup Wizard profile. Switch projects to follow a different one, or edit the profile to change it.`
+          : hermesHomeSource === "detected"
+            ? "Auto-detected from Hermes's own install convention — save it to this project's Setup Wizard profile so switching projects follows it correctly."
+            : "The folder that directly contains \"incidents\" and \"agent-tasks\" — not the hermes-agent repo checkout, its sibling data folder. Remembered on this device."}
       </p>
 
       {error && <ErrorBox message={error} />}
 
-      {!hermesHome.trim() && <p className="muted-note">Enter Hermes's home directory above to load its live incident pipeline.</p>}
+      {!hermesHome.trim() && !detectingHome && (
+        <p className="muted-note">
+          Couldn't auto-detect Hermes's install — enter its home directory above to load the live incident pipeline.
+        </p>
+      )}
 
       {hermesHome.trim() && (
         <>
@@ -6274,14 +6387,20 @@ function findProfileForRepoPath(profiles, path) {
   return matches.slice().sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))[0];
 }
 
-function HermesSetupWizardPage({ workspace, onBack, embedded = false }) {
+function HermesSetupWizardPage({ workspace, onBack, embedded = false, onSetupReady }) {
   const [step, setStep] = useState(0);
   const [profileId, setProfileId] = useState(null);
   const [profileName, setProfileName] = useState("");
   const [savedProfiles, setSavedProfiles] = useState([]);
   const [autoMatched, setAutoMatched] = useState(false);
 
-  const [repoPath, setRepoPath] = useState(workspace?.local_path || "");
+  // Hermes setup is a per-project concept, not per-code-folder -- it must
+  // always be scoped to the project's main folder, never to one of that
+  // project's Frontend/Backend/Admin sub-paths (which would fragment one
+  // Hermes deployment into many nonsensical partial setups). So this isn't
+  // independent state the analyst can type over; it just follows whichever
+  // project is active.
+  const repoPath = workspace?.local_path || "";
   const [platforms, setPlatforms] = useState(["discord"]);
   const [discordChannelId, setDiscordChannelId] = useState("");
   const [emailImapHost, setEmailImapHost] = useState("");
@@ -6293,12 +6412,27 @@ function HermesSetupWizardPage({ workspace, onBack, embedded = false }) {
   const [serverLogPath, setServerLogPath] = useState("");
   const [prPackageEnabled, setPrPackageEnabled] = useState(false);
   const [gitHost, setGitHost] = useState("");
+  const [hermesHome, setHermesHome] = useState("");
 
   const [artifact, setArtifact] = useState(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [detectingHermesHome, setDetectingHermesHome] = useState(false);
+  const [saveNotice, setSaveNotice] = useState("");
+
+  async function detectHermesHomeForWizard() {
+    setDetectingHermesHome(true);
+    try {
+      const res = await api("/api/hermes/incidents/detect-home");
+      if (res?.hermes_home) setHermesHome(res.hermes_home);
+    } catch {
+      // best-effort -- the analyst can still type it manually
+    } finally {
+      setDetectingHermesHome(false);
+    }
+  }
 
   useEffect(() => {
     loadProfiles();
@@ -6307,8 +6441,9 @@ function HermesSetupWizardPage({ workspace, onBack, embedded = false }) {
   // Follow the connected project automatically: once both the workspace's
   // local path and the saved-profiles list are known, load whichever saved
   // profile already points at this repo -- no need to re-pick it from the
-  // dropdown every time the same project is reconnected. If nothing matches,
-  // just prefill the repo path for a fresh setup instead. workspace resolves
+  // dropdown every time the same project is reconnected. repoPath itself
+  // always mirrors workspace.local_path directly (see above), so there's
+  // nothing to prefill here when no match exists. workspace resolves
   // asynchronously (ConnectProjectScreen loads the active project after
   // mount), so this re-runs once it becomes available.
   useEffect(() => {
@@ -6316,16 +6451,23 @@ function HermesSetupWizardPage({ workspace, onBack, embedded = false }) {
       return;
     }
     const match = findProfileForRepoPath(savedProfiles, workspace.local_path);
-    if (match) {
-      if (match.id !== profileId) {
-        setAutoMatched(true);
-        loadProfile(match.id);
-      }
-    } else if (!profileId) {
-      setRepoPath(workspace.local_path);
+    if (match && match.id !== profileId) {
+      setAutoMatched(true);
+      loadProfile(match.id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspace?.local_path, savedProfiles]);
+
+  // The active project already has (or doesn't have) a saved Hermes profile
+  // the moment profileId settles -- either because it was auto-matched above
+  // or because the analyst just saved one. Either way, that's the signal a
+  // parent gating screen (Project Control Center) needs to unblock "Continue".
+  useEffect(() => {
+    if (profileId && onSetupReady) {
+      onSetupReady();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileId]);
 
   function loadProfiles() {
     api("/api/hermes/setup-profiles")
@@ -6342,7 +6484,6 @@ function HermesSetupWizardPage({ workspace, onBack, embedded = false }) {
       const p = await api(`/api/hermes/setup-profiles/${id}`);
       setProfileId(p.id);
       setProfileName(p.name);
-      setRepoPath(p.repo_path || "");
       setPlatforms(p.platforms && p.platforms.length ? p.platforms : ["discord"]);
       setDiscordChannelId(p.discord_channel_id || "");
       setEmailImapHost(p.email_imap_host || "");
@@ -6354,6 +6495,7 @@ function HermesSetupWizardPage({ workspace, onBack, embedded = false }) {
       setServerLogPath(p.server_log_path || "");
       setPrPackageEnabled(Boolean(p.pr_package_enabled));
       setGitHost(p.git_host || "");
+      setHermesHome(p.hermes_home || "");
       setArtifact(null);
       setStep(0);
     } catch (err) {
@@ -6365,7 +6507,6 @@ function HermesSetupWizardPage({ workspace, onBack, embedded = false }) {
     setAutoMatched(false);
     setProfileId(null);
     setProfileName("");
-    setRepoPath(workspace?.local_path || "");
     setPlatforms(["discord"]);
     setDiscordChannelId("");
     setEmailImapHost("");
@@ -6377,8 +6518,10 @@ function HermesSetupWizardPage({ workspace, onBack, embedded = false }) {
     setServerLogPath("");
     setPrPackageEnabled(false);
     setGitHost("");
+    setHermesHome("");
     setArtifact(null);
     setError("");
+    setSaveNotice("");
     setStep(0);
   }
 
@@ -6412,14 +6555,20 @@ function HermesSetupWizardPage({ workspace, onBack, embedded = false }) {
     }
     const name = profileName.trim() || repoPath.trim();
     setError("");
+    setSaveNotice("");
     setSaving(true);
     try {
       const saved = await api("/api/hermes/setup-profiles", {
         method: "POST",
-        body: { id: profileId, name, ...currentAnswers() },
+        body: { id: profileId, name, ...currentAnswers(), hermes_home: hermesHome.trim() || null },
       });
       setProfileId(saved.id);
       setProfileName(saved.name);
+      setSaveNotice(
+        saved.hermes_home
+          ? `Saved. Its incidents/agent-tasks folder is ready at ${saved.hermes_home} — point a Hermes instance for this project there.`
+          : "Saved."
+      );
       loadProfiles();
     } catch (err) {
       setError(err.message);
@@ -6529,6 +6678,7 @@ function HermesSetupWizardPage({ workspace, onBack, embedded = false }) {
               : `Editing "${profileName}" — click "Start new" to begin a fresh, unsaved setup instead.`}
           </p>
         )}
+        {saveNotice && <p className="field-hint">{saveNotice}</p>}
       </div>
 
       <div className="tracker-panel" style={{ marginTop: "1rem" }}>
@@ -6542,12 +6692,13 @@ function HermesSetupWizardPage({ workspace, onBack, embedded = false }) {
         {step === 0 && (
           <>
             <label className="field-label">Repo path</label>
-            <input
-              type="text"
-              value={repoPath}
-              onChange={(event) => setRepoPath(event.target.value)}
-              placeholder="C:/path/to/target/repo"
-            />
+            <input type="text" value={repoPath || "No project connected yet"} disabled />
+            <p className="field-hint">
+              Locked to this project's main folder — Hermes setup applies to the whole project, not to individual
+              Frontend/Backend/Admin sub-paths. That keeps everything (channels, storage paths, PR-package flow)
+              under one setup instead of a separate one per sub-folder, which wouldn't make sense. To set up Hermes
+              for a different project, switch the active project first.
+            </p>
             <label className="field-label">Intake platforms</label>
             <div className="action-row">
               <label className="field-label" style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
@@ -6607,6 +6758,25 @@ function HermesSetupWizardPage({ workspace, onBack, embedded = false }) {
             <label className="field-label">Server log source path</label>
             <input type="text" value={serverLogPath} onChange={(event) => setServerLogPath(event.target.value)} placeholder="\\\\fileserver\\logs or an SFTP/network path" />
             <p className="field-hint">Leave any of these blank to fall back to Hermes's own default location.</p>
+
+            <label className="field-label">Hermes home directory (for this project's Production Incidents view)</label>
+            <div className="path-input-row">
+              <input
+                type="text"
+                value={hermesHome}
+                onChange={(event) => setHermesHome(event.target.value)}
+                placeholder={detectingHermesHome ? "Detecting..." : "C:/Users/you/AppData/Local/hermes"}
+              />
+              <button className="btn ghost compact" type="button" disabled={detectingHermesHome} onClick={detectHermesHomeForWizard}>
+                {detectingHermesHome ? "Detecting..." : "Detect"}
+              </button>
+            </div>
+            <p className="field-hint">
+              The folder that directly contains Hermes's "incidents" and "agent-tasks" — separate from the setup YAML
+              above, this just lets the Hermes Incident Tracker page show the right project's incidents automatically
+              when you switch projects. New project, folder doesn't exist yet? Just type the path you want and save
+              this profile below — mini-Project creates it for you.
+            </p>
           </>
         )}
 

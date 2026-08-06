@@ -4,6 +4,7 @@ import com.miniproject.backend.integrations.HermesSetupProfileService;
 import com.miniproject.backend.integrations.HermesSetupProfileView;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -33,7 +34,7 @@ public class HermesSetupProfileController {
                 request.repoPath(), request.platforms(), request.discordChannelId(), request.emailImapHost(),
                 request.emailAccount(), request.emailAllowedSenders(), request.incidentReportsDir(),
                 request.incidentExtractsDir(), request.incidentDownloadsDir(), request.serverLogPath(),
-                request.prPackageEnabled(), request.gitHost()));
+                request.prPackageEnabled(), request.gitHost(), request.hermesHome()));
     }
 
     @CrossOrigin(origins = "*")
@@ -46,6 +47,12 @@ public class HermesSetupProfileController {
     @GetMapping("/{id}")
     public HermesSetupProfileView get(@PathVariable String id) {
         return service.get(id).orElseThrow(() -> new NoSuchElementException("No setup profile found for id " + id));
+    }
+
+    @CrossOrigin(origins = "*")
+    @DeleteMapping("/{id}")
+    public void delete(@PathVariable String id) {
+        service.delete(id);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
