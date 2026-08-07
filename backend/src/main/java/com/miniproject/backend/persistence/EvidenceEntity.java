@@ -24,7 +24,7 @@ public class EvidenceEntity {
     private AnalysisArtifactEntity artifact;
 
     @Lob
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "LONGTEXT")
     private String claim;
 
     @Column(nullable = false)

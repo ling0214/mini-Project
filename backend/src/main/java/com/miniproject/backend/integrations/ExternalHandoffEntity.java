@@ -33,6 +33,7 @@ public class ExternalHandoffEntity {
     private String externalUrl;
 
     @Lob
+    @Column(columnDefinition = "LONGTEXT")
     private String message;
 
     @Column(name = "dry_run", nullable = false)

@@ -94,6 +94,107 @@ class GitLogReaderTest {
         git(repo, "config", "user.name", "Test User");
     }
 
+    @Test
+    void toWebUrlStripsGitSuffixFromHttpsUrl() {
+        String input = "https://github.com/NousResearch/hermes-agent.git";
+        String output = GitLogReader.toWebUrl(input);
+        assertThat(output).isEqualTo("https://github.com/NousResearch/hermes-agent");
+    }
+
+    @Test
+    void toWebUrlPreservesHttpsUrlWithoutGitSuffix() {
+        String input = "https://github.com/NousResearch/hermes-agent";
+        String output = GitLogReader.toWebUrl(input);
+        assertThat(output).isEqualTo("https://github.com/NousResearch/hermes-agent");
+    }
+
+    @Test
+    void toWebUrlConvertsGitAtSyntaxToHttps() {
+        String input = "git@github.com:NousResearch/hermes-agent.git";
+        String output = GitLogReader.toWebUrl(input);
+        assertThat(output).isEqualTo("https://github.com/NousResearch/hermes-agent");
+    }
+
+    @Test
+    void toWebUrlConvertsSshSyntaxToHttps() {
+        String input = "ssh://git@github.com/NousResearch/hermes-agent.git";
+        String output = GitLogReader.toWebUrl(input);
+        assertThat(output).isEqualTo("https://github.com/NousResearch/hermes-agent");
+    }
+
+    @Test
+    void toWebUrlReturnsNullForUnrecognizedScheme() {
+        String input = "file:///local/path/repo.git";
+        String output = GitLogReader.toWebUrl(input);
+        assertThat(output).isNull();
+    }
+
+    @Test
+    void toWebUrlReturnsNullForNull() {
+        String output = GitLogReader.toWebUrl(null);
+        assertThat(output).isNull();
+    }
+
+    @Test
+    void toWebUrlReturnsNullForBlank() {
+        String output = GitLogReader.toWebUrl("   ");
+        assertThat(output).isNull();
+    }
+
+    @Test
+    void getRemoteUrlReturnsConfiguredOriginByDefault() throws Exception {
+        Path repo = tempDir.resolve("remote-url-test");
+        Files.createDirectories(repo);
+
+        git(repo, "init", "-b", "main");
+        configureIdentity(repo);
+        Files.writeString(repo.resolve("test.txt"), "test\n");
+        git(repo, "add", ".");
+        git(repo, "commit", "-m", "initial");
+
+        // Configure a fake remote URL
+        git(repo, "remote", "add", "origin", "https://github.com/test/repo.git");
+
+        String url = gitLogReader.getRemoteUrl(repo.toString(), null);
+
+        assertThat(url).isEqualTo("https://github.com/test/repo.git");
+    }
+
+    @Test
+    void getRemoteUrlReturnsExplicitRemoteName() throws Exception {
+        Path repo = tempDir.resolve("remote-url-named");
+        Files.createDirectories(repo);
+
+        git(repo, "init", "-b", "main");
+        configureIdentity(repo);
+        Files.writeString(repo.resolve("test.txt"), "test\n");
+        git(repo, "add", ".");
+        git(repo, "commit", "-m", "initial");
+
+        git(repo, "remote", "add", "upstream", "https://github.com/upstream/repo.git");
+
+        String url = gitLogReader.getRemoteUrl(repo.toString(), "upstream");
+
+        assertThat(url).isEqualTo("https://github.com/upstream/repo.git");
+    }
+
+    @Test
+    void getRemoteUrlThrowsWhenNotAGitRepo() {
+        Path notARepo = tempDir.resolve("not-a-repo");
+        try {
+            Files.createDirectories(notARepo);
+        } catch (IOException e) {
+            throw new AssertionError("Failed to create temp dir", e);
+        }
+
+        GitLogReader.GitLogReaderException ex = org.junit.jupiter.api.Assertions.assertThrows(
+                GitLogReader.GitLogReaderException.class,
+                () -> gitLogReader.getRemoteUrl(notARepo.toString(), null)
+        );
+
+        assertThat(ex.getMessage()).contains("fatal");
+    }
+
     private void git(Path cwd, String... args) throws IOException, InterruptedException {
         List<String> command = new java.util.ArrayList<>(List.of("git"));
         command.addAll(List.of(args));

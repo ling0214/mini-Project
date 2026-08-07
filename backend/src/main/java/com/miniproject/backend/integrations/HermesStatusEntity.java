@@ -50,7 +50,7 @@ public class HermesStatusEntity {
      * repeat it.
      */
     @Lob
-    @Column(name = "similar_issues")
+    @Column(name = "similar_issues", columnDefinition = "LONGTEXT")
     private String similarIssues;
 
     @Column(name = "create_date", nullable = false)

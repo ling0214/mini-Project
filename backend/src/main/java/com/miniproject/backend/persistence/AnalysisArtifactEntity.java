@@ -45,11 +45,11 @@ public class AnalysisArtifactEntity {
     private String skill;
 
     @Lob
-    @Column(name = "input_text")
+    @Column(name = "input_text", columnDefinition = "LONGTEXT")
     private String inputText;
 
     @Lob
-    @Column(name = "result_json", nullable = false)
+    @Column(name = "result_json", nullable = false, columnDefinition = "LONGTEXT")
     private String resultJson;
 
     @Column(name = "created_at", nullable = false)

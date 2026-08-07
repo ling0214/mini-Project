@@ -49,7 +49,7 @@ public class GitLogReader {
      *                     requiring the analyst to already know which files they customized.
      */
     public GitFacts readFacts(String repoPath, String remoteRef, String localRef, List<String> watchedPaths) {
-        run(repoPath, "fetch");
+        fetchWithRetry(repoPath);
 
         String counts = run(repoPath, "rev-list", "--left-right", "--count", remoteRef + "..." + localRef);
         int[] parsed = parseCounts(counts);
@@ -93,6 +93,82 @@ public class GitLogReader {
     /** True when `git status --porcelain` reports nothing -- the safety gate before pull(). */
     public boolean isWorkingTreeClean(String repoPath) {
         return run(repoPath, "status", "--porcelain").isBlank();
+    }
+
+    /**
+     * `fetch` is the one command in this class that depends on network
+     * reachability -- everything else (log, diff, status, tag, remote) is
+     * purely local. A transient blip (VPN reconnect, brief DNS hiccup)
+     * previously surfaced immediately as a hard failure even when the same
+     * fetch would have succeeded moments later (verified against a real
+     * "Could not connect to server" failure where github.com was reachable
+     * again within seconds). One retry after a short pause absorbs that
+     * class of flake without masking a genuine, sustained outage -- it
+     * still fails loudly, with the original message, if the retry also
+     * fails.
+     */
+    private void fetchWithRetry(String repoPath) {
+        try {
+            run(repoPath, "fetch");
+        } catch (GitLogReaderException first) {
+            try {
+                Thread.sleep(Duration.ofSeconds(2).toMillis());
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                throw first;
+            }
+            run(repoPath, "fetch");
+        }
+    }
+
+    /**
+     * Cheap, local-only lookup (no network) so a wizard can show which repo a
+     * path actually resolves to before the analyst runs a real upstream
+     * check -- catches the "typed the wrong folder" mistake immediately
+     * instead of after a confusing "cannot change to ..." failure downstream.
+     */
+    public String getRemoteUrl(String repoPath, String remoteName) {
+        String name = (remoteName == null || remoteName.isBlank()) ? "origin" : remoteName;
+        return run(repoPath, "remote", "get-url", name).trim();
+    }
+
+    /**
+     * Best-effort normalization of a git remote URL (https, scp-like
+     * git@host:path, or ssh://) into a browser-openable https URL, so the
+     * analyst can click through and visually confirm it's the right repo.
+     * Returns null when the scheme isn't recognized rather than guessing.
+     */
+    public static String toWebUrl(String remoteUrl) {
+        if (remoteUrl == null || remoteUrl.isBlank()) {
+            return null;
+        }
+        String url = remoteUrl.trim();
+        if (url.startsWith("http://") || url.startsWith("https://")) {
+            return stripDotGit(url);
+        }
+        if (url.startsWith("ssh://")) {
+            String rest = url.substring("ssh://".length());
+            int at = rest.indexOf('@');
+            if (at >= 0) {
+                rest = rest.substring(at + 1);
+            }
+            return "https://" + stripDotGit(rest);
+        }
+        if (url.startsWith("git@")) {
+            String rest = url.substring("git@".length());
+            int colon = rest.indexOf(':');
+            if (colon <= 0) {
+                return null;
+            }
+            String host = rest.substring(0, colon);
+            String path = rest.substring(colon + 1);
+            return "https://" + host + "/" + stripDotGit(path);
+        }
+        return null;
+    }
+
+    private static String stripDotGit(String s) {
+        return s.endsWith(".git") ? s.substring(0, s.length() - 4) : s;
     }
 
     /**

@@ -31,10 +31,14 @@ spring:
   jackson:
     property-naming-strategy: SNAKE_CASE
   datasource:
-    url: jdbc:h2:file:./data/miniproject;AUTO_SERVER=TRUE
-    driver-class-name: org.h2.Driver
-    username: sa
-    password: ""
+    # Local MySQL instance (DBeaver-managed). Override any of these via env
+    # vars for another machine/environment; password defaults empty to match
+    # this dev root account -- put a real one in application-local.yml or
+    # DB_PASSWORD if the target server ever needs auth.
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:miniproject}?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
   jpa:
     open-in-view: false
     hibernate:
@@ -61,13 +65,22 @@ analysis:
     # CodeQaSkill through LlmAnswerSynthesizer, which reasons over the same
     # facts via whichever analysis.llm.provider is active below.
     provider: ${ANALYSIS_CODEQA_PROVIDER:rule-based}
+  hermes-version:
+    # Rule-based default falls back to "N feat: commits found upstream but not
+    # evaluated" without reasoning. Set to "llm" to route HermesVersionAdvisorSkill
+    # through LlmHermesVersionAdvisorSynthesizer, which analyzes git facts
+    # (commits behind, touched watched files, feature subjects) and recommends
+    # a specific upstream ref with reasoning + risks + suggested enhancements.
+    # Requires analysis.llm.provider to be set (e.g., "claude-cli").
+    provider: ${ANALYSIS_HERMES_VERSION_PROVIDER:llm}
   llm:
     # rule-based/noop by default. Set to "openai" together with OPENAI_API_KEY
     # for cloud-backed analysis, "local" (see local-llm.* below) to keep text
     # on a self-hosted model for AI-restricted networks, or "claude-cli" (see
     # claude-cli.* below) to shell out to an already-logged-in local Claude
-    # Code CLI instead of managing a separate API key at all.
-    provider: ${ANALYSIS_LLM_PROVIDER:rule-based}
+    # Code CLI instead of managing a separate API key at all. Default is
+    # "claude-cli" if available (no extra key management), else "rule-based".
+    provider: ${ANALYSIS_LLM_PROVIDER:claude-cli}
   target-project:
     # Current demo target. Override these when testing another project.
     name: ${ANALYSIS_TARGET_PROJECT_NAME:MyBanjirCare}
@@ -137,6 +150,11 @@ integrations:
     enabled: ${HERMES_ENABLED:false}
     discord-webhook-url: ${HERMES_DISCORD_WEBHOOK_URL:}
     target-label: ${HERMES_TARGET_LABEL:Hermes Discord intake}
+    # There is exactly one Hermes upstream (github.com/NousResearch/hermes-agent),
+    # so Hermes Version Control locks onto this single local clone instead of
+    # asking the analyst to type/remember a repo path every time (see the
+    # missing-"Local\"-segment typo that caused an HTTP 500 before this).
+    agent-repo-path: ${HERMES_AGENT_REPO_PATH:C:/Users/lingn/AppData/Local/hermes/hermes-agent}
 
   google:
     # OAuth 2.0, covers Calendar (read-only) + Gmail (read-only) with one

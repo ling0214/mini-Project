@@ -2789,7 +2789,7 @@ function AnalystWorkflow({ workspace, onWorkspaceUpdated, onViewProjectOverview,
         {phase === "db-diagnostics" && <DbDiagnosticsPrototype workspace={workspace} onBack={returnToWorkQueue} />}
         {phase === "evidence-gate" && <EvidenceGatePrototype workspace={workspace} onBack={returnToWorkQueue} />}
         {phase === "hermes-tracker" && <HermesTrackerPrototype workspace={workspace} onBack={returnToWorkQueue} />}
-        {phase === "hermes-version-advisor" && <HermesVersionAdvisorPage workspace={workspace} onBack={returnToWorkQueue} />}
+        {phase === "hermes-version-advisor" && <HermesVersionAdvisorPage onBack={returnToWorkQueue} />}
         {phase === "hermes-trending-digest" && <HermesTrendingDigestPage onBack={returnToWorkQueue} />}
         {phase === "memory-center" && <MemoryCenterPrototype workspace={workspace} onBack={returnToWorkQueue} />}
       </main>
@@ -6852,8 +6852,13 @@ function HermesSetupWizardPage({ workspace, onBack, embedded = false, onSetupRea
   );
 }
 
-function HermesVersionAdvisorPage({ workspace, onBack }) {
-  const [repoPath, setRepoPath] = useState(workspace?.local_path || "");
+function HermesVersionAdvisorPage({ onBack }) {
+  // There is exactly one Hermes upstream (github.com/NousResearch/hermes-agent),
+  // so this follows the backend's single configured clone path instead of
+  // asking the analyst to type/remember it -- a missing "Local\" segment here
+  // once caused a confusing HTTP 500 instead of an immediate, clear message.
+  const [repoPath, setRepoPath] = useState("");
+  const [loadingDefaultPath, setLoadingDefaultPath] = useState(true);
   const [watchedPathsText, setWatchedPathsText] = useState("");
   const [artifact, setArtifact] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -6863,6 +6868,36 @@ function HermesVersionAdvisorPage({ workspace, onBack }) {
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [approving, setApproving] = useState(false);
   const [pullResult, setPullResult] = useState(null);
+
+  const [remoteInfo, setRemoteInfo] = useState(null);
+  const [checkingRemote, setCheckingRemote] = useState(false);
+
+  useEffect(() => {
+    api("/api/hermes/version-control/default-repo-path")
+      .then((res) => setRepoPath(res.repo_path || ""))
+      .catch(() => {})
+      .finally(() => setLoadingDefaultPath(false));
+  }, []);
+
+  // Debounced, local-only "which repo does this path actually point at"
+  // preview -- so a typo'd path (e.g. missing "Local\" or the "hermes-agent"
+  // subfolder) is obvious immediately, instead of only surfacing later as a
+  // confusing "cannot change to ..." failure from the real upstream check.
+  useEffect(() => {
+    const trimmed = repoPath.trim();
+    if (!trimmed) {
+      setRemoteInfo(null);
+      return;
+    }
+    setCheckingRemote(true);
+    const timeout = setTimeout(() => {
+      api(`/api/skills/hermes-version-advisor/remote-info?repo_path=${encodeURIComponent(trimmed)}`)
+        .then(setRemoteInfo)
+        .catch(() => setRemoteInfo(null))
+        .finally(() => setCheckingRemote(false));
+    }, 400);
+    return () => clearTimeout(timeout);
+  }, [repoPath]);
 
   async function generate() {
     if (!repoPath.trim()) {
@@ -6943,18 +6978,32 @@ function HermesVersionAdvisorPage({ workspace, onBack }) {
         <div className="tracker-panel-head">
           <div>
             <span className="source-pill">Step 1</span>
-            <h2>Point at your Hermes repo</h2>
-            <p>mini-Project checks upstream and figures out which files you've changed locally on its own — nothing else to configure.</p>
+            <h2>Your Hermes repo</h2>
+            <p>There's only one Hermes upstream, so this is fixed to that clone — mini-Project checks upstream and figures out which files you've changed locally on its own, nothing else to configure.</p>
           </div>
         </div>
 
         <label className="field-label">Repo path</label>
-        <input
-          type="text"
-          value={repoPath}
-          onChange={(event) => setRepoPath(event.target.value)}
-          placeholder="C:/path/to/target/repo"
-        />
+        <input type="text" value={loadingDefaultPath ? "Loading..." : repoPath} disabled />
+        {checkingRemote && <p className="hermes-match-hint">Checking which repo this points at...</p>}
+        {!checkingRemote && remoteInfo?.is_git_repo && (
+          <p className="hermes-match-hint found">
+            ✓ This points at:{" "}
+            {remoteInfo.web_url ? (
+              <a href={remoteInfo.web_url} target="_blank" rel="noreferrer">
+                {remoteInfo.web_url}
+              </a>
+            ) : (
+              remoteInfo.remote_url
+            )}
+            {" "}— make sure that's the Hermes repo before continuing.
+          </p>
+        )}
+        {!checkingRemote && remoteInfo && remoteInfo.is_git_repo === false && (
+          <p className="hermes-match-hint none">
+            ⚠ Not a git repo at this path — double-check it (e.g. missing "Local\" or the "hermes-agent" subfolder).
+          </p>
+        )}
 
         <details className="collapsible-advanced">
           <summary>Advanced: manually pick which files to watch (optional)</summary>

@@ -5,9 +5,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -17,9 +21,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 
 @Service
 public class EndpointSequenceDiagramService {
@@ -105,16 +109,67 @@ public class EndpointSequenceDiagramService {
             return List.of();
         }
         List<EndpointOption> endpoints = new ArrayList<>();
-        try (Stream<Path> files = Files.walk(routes)) {
-            files.filter(Files::isRegularFile)
-                    .filter(path -> path.toString().endsWith(".php"))
-                    .forEach(path -> endpoints.addAll(parseRoutes(projectPath, path)));
-        } catch (IOException e) {
-            return List.of();
-        }
+        walkResilient(routes, path -> path.toString().endsWith(".php"))
+                .forEach(path -> endpoints.addAll(parseRoutes(projectPath, path)));
         return endpoints.stream()
                 .sorted(Comparator.comparing(EndpointOption::path).thenComparing(EndpointOption::method))
                 .toList();
+    }
+
+    /**
+     * Files.walk() aborts the *entire* traversal the instant it hits one
+     * unreadable subdirectory (a permission-locked venv/cache folder, say) --
+     * that previously turned "one locked folder somewhere in the project"
+     * into "500 the whole request" (UncheckedIOException escaping an
+     * unguarded catch), and after guarding that, into "zero endpoints found
+     * anywhere in the project" (the walk still gave up on first error, just
+     * without crashing). Files.walkFileTree()'s visitFileFailed() hook lets
+     * each unreadable entry be skipped individually so the rest of the tree
+     * still gets scanned -- verified against the real repro case (a locked
+     * ".pytest-hermes" folder inside an otherwise-readable multi-project
+     * root).
+     */
+    // Dependency/build/VCS noise that's expensive to walk and never contains
+    // a project's own routes/controllers/API calls -- without this, a real
+    // multi-repo workspace (node_modules alone can be 100k+ files, several
+    // .git object stores) turned a fixed unreadable-directory bug into a new
+    // one: a ~60s scan that looked identical to "found nothing" from the UI
+    // side. codebase-memory-mcp already excludes this same set for the same
+    // reason; kept in sync deliberately rather than coincidentally.
+    private static final Set<String> WALK_SKIP_DIRS = Set.of(
+            "node_modules", ".git", ".hg", ".svn", "dist", "build", "target", "out",
+            "vendor", ".venv", "venv", "__pycache__", ".next", "coverage",
+            ".idea", ".vscode", ".gradle", ".mvn", "bin", "obj");
+
+    private List<Path> walkResilient(Path root, Predicate<Path> matches) {
+        List<Path> found = new ArrayList<>();
+        try {
+            Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+                @Override
+                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                    String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
+                    return WALK_SKIP_DIRS.contains(name) ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                    if (matches.test(file)) {
+                        found.add(file);
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (IOException | UncheckedIOException e) {
+            // Reached only for failures walkFileTree can't route to a visitor
+            // callback (e.g. the root itself vanishing mid-walk) -- return
+            // whatever was already found rather than discarding it.
+        }
+        return found;
     }
 
     public String generateMermaid(Path projectPath, String endpointId) {
@@ -441,14 +496,8 @@ public class EndpointSequenceDiagramService {
             return List.of();
         }
         List<EndpointOption> endpoints = new ArrayList<>();
-        try (Stream<Path> files = Files.walk(sourceRoot)) {
-            files.filter(Files::isRegularFile)
-                    .filter(path -> path.toString().endsWith(".java"))
-                    .filter(path -> read(path).contains("@RestController"))
-                    .forEach(path -> endpoints.addAll(parseSpringController(projectPath, path)));
-        } catch (IOException e) {
-            return List.of();
-        }
+        walkResilient(sourceRoot, path -> path.toString().endsWith(".java") && read(path).contains("@RestController"))
+                .forEach(path -> endpoints.addAll(parseSpringController(projectPath, path)));
         return endpoints.stream()
                 .sorted(Comparator.comparing(EndpointOption::path).thenComparing(EndpointOption::method))
                 .toList();
@@ -482,13 +531,8 @@ public class EndpointSequenceDiagramService {
         List<EndpointOption> endpoints = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
         for (Path sourceRoot : roots) {
-            try (Stream<Path> files = Files.walk(sourceRoot)) {
-                files.filter(Files::isRegularFile)
-                        .filter(EndpointSequenceDiagramService::isFrontendFile)
-                        .forEach(path -> endpoints.addAll(parseFrontendApiCalls(projectPath, path, seen)));
-            } catch (IOException ignored) {
-                return List.of();
-            }
+            walkResilient(sourceRoot, EndpointSequenceDiagramService::isFrontendFile)
+                    .forEach(path -> endpoints.addAll(parseFrontendApiCalls(projectPath, path, seen)));
         }
         return endpoints;
     }
@@ -737,16 +781,11 @@ public class EndpointSequenceDiagramService {
             return List.of();
         }
         Set<String> models = new LinkedHashSet<>();
-        try (Stream<Path> files = Files.walk(modelDir)) {
-            files.filter(Files::isRegularFile)
-                    .filter(path -> path.toString().endsWith(".php"))
-                    .map(path -> path.getFileName().toString().replaceFirst("\\.php$", ""))
-                    .filter(model -> containsAny(controllerBody, model + "::", "new " + model, "$" + lowerFirst(model)))
-                    .limit(5)
-                    .forEach(models::add);
-        } catch (IOException ignored) {
-            return List.of();
-        }
+        walkResilient(modelDir, path -> path.toString().endsWith(".php")).stream()
+                .map(path -> path.getFileName().toString().replaceFirst("\\.php$", ""))
+                .filter(model -> containsAny(controllerBody, model + "::", "new " + model, "$" + lowerFirst(model)))
+                .limit(5)
+                .forEach(models::add);
         return List.copyOf(models);
     }
 

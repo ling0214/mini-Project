@@ -45,7 +45,7 @@ public class HermesSetupProfileEntity {
     private String emailAccount;
 
     @Lob
-    @Column(name = "email_allowed_senders")
+    @Column(name = "email_allowed_senders", columnDefinition = "LONGTEXT")
     private String emailAllowedSenders;
 
     @Column(name = "incident_reports_dir")
