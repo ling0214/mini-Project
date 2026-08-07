@@ -2,6 +2,7 @@ package com.miniproject.backend.web;
 
 import com.miniproject.backend.integrations.GitLogReader;
 import com.miniproject.backend.integrations.HermesVersionControlService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -13,14 +14,27 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api/hermes/version-control")
 public class HermesVersionControlController {
 
     private final HermesVersionControlService service;
+    private final String agentRepoPath;
 
-    public HermesVersionControlController(HermesVersionControlService service) {
+    public HermesVersionControlController(
+            HermesVersionControlService service,
+            @Value("${integrations.hermes.agent-repo-path}") String agentRepoPath) {
         this.service = service;
+        this.agentRepoPath = agentRepoPath;
+    }
+
+    /** The one Hermes upstream clone -- see integrations.hermes.agent-repo-path. */
+    @CrossOrigin(origins = "*")
+    @GetMapping("/default-repo-path")
+    public Map<String, String> defaultRepoPath() {
+        return Map.of("repo_path", agentRepoPath);
     }
 
     @CrossOrigin(origins = "*")

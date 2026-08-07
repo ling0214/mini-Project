@@ -29,11 +29,11 @@ public class MemoryCardEntity {
     private String skill;
 
     @Lob
-    @Column(name = "summary_markdown", nullable = false)
+    @Column(name = "summary_markdown", nullable = false, columnDefinition = "LONGTEXT")
     private String summaryMarkdown;
 
     @Lob
-    @Column(name = "search_terms", nullable = false)
+    @Column(name = "search_terms", nullable = false, columnDefinition = "LONGTEXT")
     private String searchTerms;
 
     @Column(name = "created_at", nullable = false)

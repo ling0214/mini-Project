@@ -25,11 +25,11 @@ public class GoogleTokenEntity {
     private String id = SINGLETON_ID;
 
     @Lob
-    @Column(name = "access_token", nullable = false)
+    @Column(name = "access_token", nullable = false, columnDefinition = "LONGTEXT")
     private String accessToken;
 
     @Lob
-    @Column(name = "refresh_token")
+    @Column(name = "refresh_token", columnDefinition = "LONGTEXT")
     private String refreshToken;
 
     @Column(name = "expires_at", nullable = false)

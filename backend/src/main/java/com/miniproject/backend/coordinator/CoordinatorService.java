@@ -29,6 +29,8 @@ import com.miniproject.backend.skills.TestCaseGenSkill;
 import com.miniproject.backend.skills.TestScopeReviewResult;
 import com.miniproject.backend.skills.TimelineEstimationResult;
 import com.miniproject.backend.skills.TimelineEstimationSynthesizer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -51,6 +53,8 @@ import java.util.Set;
  */
 @Service
 public class CoordinatorService {
+
+    private static final Logger REVIEW_OPPORTUNITY_LOG = LoggerFactory.getLogger(CoordinatorService.class);
 
     private final CodeQaSkill codeQaSkill;
     private final ImpactAnalysisSkill impactAnalysisSkill;
@@ -118,6 +122,7 @@ public class CoordinatorService {
         CodeQaResult result = codeQaSkill.run(question);
         Artifact<CodeQaResult> artifact = Artifact.draft(profile + "-agent", "code-qa", result, result.evidence());
         persistence.save(artifact, profile, question);
+        logSkillReviewOpportunity("code-qa", artifact.taskId());
         return artifact;
     }
 
@@ -126,6 +131,7 @@ public class CoordinatorService {
         ImpactAnalysisResult result = withSimilarPastChanges(impactAnalysisSkill.run(changeRequest), changeRequest);
         Artifact<ImpactAnalysisResult> artifact = Artifact.draft(profile + "-agent", "impact-analysis", result, result.evidence());
         persistence.save(artifact, profile, changeRequest);
+        logSkillReviewOpportunity("impact-analysis", artifact.taskId());
         return artifact;
     }
 
@@ -166,6 +172,7 @@ public class CoordinatorService {
         Artifact<RequirementAnalysisResult> artifact =
                 Artifact.draft(profile + "-agent", "requirement-analysis", result, result.evidence());
         persistence.save(artifact, profile, description);
+        logSkillReviewOpportunity("requirement-analysis", artifact.taskId());
         return artifact;
     }
 
@@ -175,6 +182,7 @@ public class CoordinatorService {
         Artifact<HermesSetupWizardResult> artifact =
                 Artifact.draft(profile + "-agent", "hermes-setup-wizard", result, result.evidence());
         persistence.save(artifact, profile, answers.repoPath());
+        logSkillReviewOpportunity("hermes-setup-wizard", artifact.taskId());
         return artifact;
     }
 
@@ -186,6 +194,7 @@ public class CoordinatorService {
         Artifact<HermesVersionAdvisorResult> artifact =
                 Artifact.draft(profile + "-agent", "hermes-version-advisor", result, result.evidence());
         persistence.save(artifact, profile, repoPath);
+        logSkillReviewOpportunity("hermes-version-advisor", artifact.taskId());
         return artifact;
     }
 
@@ -200,6 +209,7 @@ public class CoordinatorService {
         Artifact<HermesTrendingDigestResult> artifact =
                 Artifact.draft(profile + "-agent", "hermes-trending-digest", result, result.evidence());
         persistence.save(artifact, profile, "github.com/trending weekly scan");
+        logSkillReviewOpportunity("hermes-trending-digest", artifact.taskId());
         return artifact;
     }
 
@@ -322,6 +332,7 @@ public class CoordinatorService {
             artifact = artifact.withParentTaskId(parentTaskId);
         }
         persistence.save(artifact, profile, target, parentTaskId);
+        logSkillReviewOpportunity("test-case-gen", artifact.taskId());
         return artifact;
     }
 
@@ -720,6 +731,21 @@ public class CoordinatorService {
         }
         String text = String.valueOf(value);
         return text.isBlank() ? fallback : text;
+    }
+
+    /**
+     * Non-blocking hint that a successful skill run is eligible for the
+     * SkillAsset vetting pipeline (skills/SkillAssetService). Deliberately
+     * does not call submitForReview itself — submission stays an explicit,
+     * human-triggered action via POST /api/skills/{skillName}/submit-for-review,
+     * so routine skill usage doesn't spam the approvals table with an entry
+     * per invocation.
+     */
+    private void logSkillReviewOpportunity(String skillName, String taskId) {
+        REVIEW_OPPORTUNITY_LOG.info(
+                "Skill '{}' completed successfully (artifact {}). Eligible for review: "
+                        + "POST /api/skills/{}/submit-for-review",
+                skillName, taskId, skillName);
     }
 
     private void requireSkillAllowed(String profile, String skill) {
